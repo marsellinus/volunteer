@@ -1,5 +1,6 @@
 <?php
 include_once '../../config/database.php';
+include_once '../../includes/notifications.php';
 session_start();
 
 // Check if owner is logged in
@@ -10,6 +11,19 @@ if(!isset($_SESSION['owner_id'])) {
 
 $owner_id = $_SESSION['owner_id'];
 $owner_name = $_SESSION['owner_name'];
+
+// Set page title
+$page_title = 'Profil Organisasi - VolunteerHub';
+
+// Include the header
+include '../../includes/header_owner.php';
+
+// Get unread notifications count with error handling
+try {
+    $unread_count = getOwnerUnreadNotificationsCount($owner_id, $conn);
+} catch (Exception $e) {
+    $unread_count = 0;
+}
 
 // Get owner profile data
 $stmt = $conn->prepare("SELECT * FROM owners WHERE owner_id = ?");
@@ -126,193 +140,149 @@ if($apps_result = $applications_query->fetch_assoc()) {
     $stats['pending_applications'] = $apps_result['pending_applications'];
 }
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Profil Organisasi - VolunteerHub</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
-</head>
-<body class="bg-gray-50">
-    <div class="min-h-screen">
-        <!-- Navigation -->
-        <nav class="bg-indigo-600 shadow-lg">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="flex justify-between h-16">
-                    <div class="flex">
-                        <div class="flex-shrink-0 flex items-center">
-                            <h1 class="text-xl font-bold text-white">VolunteerHub</h1>
+
+<!-- Main Content -->
+<main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+    <div class="md:grid md:grid-cols-3 md:gap-6">
+        <!-- Profile Summary -->
+        <div class="md:col-span-1">
+            <div class="bg-white shadow overflow-hidden sm:rounded-lg mb-6">
+                <div class="px-4 py-5 sm:px-6 bg-gradient-to-r from-indigo-600 to-purple-700 text-white">
+                    <h3 class="text-lg font-medium">Profil Organisasi</h3>
+                    <p class="mt-1 text-sm text-indigo-100">Informasi tentang organisasi Anda</p>
+                </div>
+                <div class="border-t border-gray-200 px-4 py-5 sm:p-6">
+                    <div class="flex items-center mb-4">
+                        <div class="flex-shrink-0 h-20 w-20 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-500 text-2xl">
+                            <?php echo strtoupper(substr($owner['organization_name'] ?? $owner_name, 0, 2)); ?>
                         </div>
-                        <div class="ml-6 flex items-center space-x-4">
-                            <a href="index.php" class="text-white hover:text-indigo-100 px-3 py-2 rounded-md text-sm font-medium">
-                                <i class="fas fa-home mr-1"></i> Dashboard
+                        <div class="ml-4">
+                            <h3 class="text-lg font-medium text-gray-900"><?php echo htmlspecialchars($owner['organization_name'] ?? 'Organisasi'); ?></h3>
+                            <p class="text-sm text-gray-500"><?php echo htmlspecialchars($owner['email']); ?></p>
+                            <p class="text-sm text-gray-500">PIC: <?php echo htmlspecialchars($owner_name); ?></p>
+                            <?php if(!empty($owner['website'])): ?>
+                            <a href="<?php echo htmlspecialchars($owner['website']); ?>" target="_blank" class="text-sm text-indigo-600 hover:text-indigo-500">
+                                <i class="fas fa-external-link-alt mr-1"></i> <?php echo htmlspecialchars($owner['website']); ?>
                             </a>
-                            <a href="create_activity.php" class="text-white hover:text-indigo-100 px-3 py-2 rounded-md text-sm font-medium">
-                                <i class="fas fa-plus-circle mr-1"></i> Buat Kegiatan
-                            </a>
-                            <a href="manage_activities.php" class="text-white hover:text-indigo-100 px-3 py-2 rounded-md text-sm font-medium">
-                                <i class="fas fa-tasks mr-1"></i> Kelola Kegiatan
-                            </a>
-                            <a href="profile.php" class="text-white hover:text-indigo-100 px-3 py-2 rounded-md text-sm font-medium bg-indigo-700">
-                                <i class="fas fa-user mr-1"></i> Profil
-                            </a>
+                            <?php endif; ?>
                         </div>
                     </div>
-                    <div class="flex items-center">
-                        <span class="text-white mr-4">Hello, <?php echo htmlspecialchars($owner_name); ?></span>
-                        <a href="../../auth/logout.php" class="bg-indigo-700 hover:bg-indigo-800 text-white px-3 py-2 rounded-md text-sm font-medium transition-colors duration-300">
-                            <i class="fas fa-sign-out-alt mr-1"></i> Logout
-                        </a>
+
+                    <div class="mt-6">
+                        <h4 class="text-sm font-medium text-gray-500 uppercase tracking-wider mb-2">Statistik Organisasi</h4>
+                        <dl class="grid grid-cols-2 gap-x-4 gap-y-6">
+                            <div class="border-l-4 border-indigo-400 pl-2">
+                                <dt class="text-sm text-gray-500">Total Kegiatan</dt>
+                                <dd class="mt-1 text-2xl font-semibold text-gray-900"><?php echo $stats['total_activities']; ?></dd>
+                            </div>
+                            <div class="border-l-4 border-green-400 pl-2">
+                                <dt class="text-sm text-gray-500">Kegiatan Aktif</dt>
+                                <dd class="mt-1 text-2xl font-semibold text-gray-900"><?php echo $stats['active_activities']; ?></dd>
+                            </div>
+                            <div class="border-l-4 border-blue-400 pl-2">
+                                <dt class="text-sm text-gray-500">Total Pendaftar</dt>
+                                <dd class="mt-1 text-2xl font-semibold text-gray-900"><?php echo $stats['total_applications']; ?></dd>
+                            </div>
+                            <div class="border-l-4 border-yellow-400 pl-2">
+                                <dt class="text-sm text-gray-500">Menunggu Review</dt>
+                                <dd class="mt-1 text-2xl font-semibold text-gray-900"><?php echo $stats['pending_applications']; ?></dd>
+                            </div>
+                        </dl>
                     </div>
                 </div>
             </div>
-        </nav>
+        </div>
 
-        <!-- Main Content -->
-        <main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-            <div class="md:grid md:grid-cols-3 md:gap-6">
-                <!-- Profile Summary -->
-                <div class="md:col-span-1">
-                    <div class="bg-white shadow overflow-hidden sm:rounded-lg mb-6">
-                        <div class="px-4 py-5 sm:px-6 bg-gradient-to-r from-indigo-600 to-purple-700 text-white">
-                            <h3 class="text-lg font-medium">Profil Organisasi</h3>
-                            <p class="mt-1 text-sm text-indigo-100">Informasi tentang organisasi Anda</p>
-                        </div>
-                        <div class="border-t border-gray-200 px-4 py-5 sm:p-6">
-                            <div class="flex items-center mb-4">
-                                <div class="flex-shrink-0 h-20 w-20 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-500 text-2xl">
-                                    <?php echo strtoupper(substr($owner['organization_name'] ?? $owner_name, 0, 2)); ?>
-                                </div>
-                                <div class="ml-4">
-                                    <h3 class="text-lg font-medium text-gray-900"><?php echo htmlspecialchars($owner['organization_name'] ?? 'Organisasi'); ?></h3>
-                                    <p class="text-sm text-gray-500"><?php echo htmlspecialchars($owner['email']); ?></p>
-                                    <p class="text-sm text-gray-500">PIC: <?php echo htmlspecialchars($owner_name); ?></p>
-                                    <?php if(!empty($owner['website'])): ?>
-                                    <a href="<?php echo htmlspecialchars($owner['website']); ?>" target="_blank" class="text-sm text-indigo-600 hover:text-indigo-500">
-                                        <i class="fas fa-external-link-alt mr-1"></i> <?php echo htmlspecialchars($owner['website']); ?>
-                                    </a>
-                                    <?php endif; ?>
-                                </div>
+        <!-- Profile Form -->
+        <div class="md:col-span-2">
+            <form action="profile.php" method="POST" class="bg-white shadow overflow-hidden sm:rounded-lg">
+                <div class="px-4 py-5 sm:px-6 bg-gray-50">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900">Edit Profil Organisasi</h3>
+                    <p class="mt-1 max-w-2xl text-sm text-gray-500">Perbarui informasi organisasi Anda</p>
+                </div>
+
+                <?php if($success): ?>
+                    <div class="bg-green-50 border-l-4 border-green-400 p-4 mx-4 mt-4">
+                        <div class="flex">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-check-circle text-green-400"></i>
                             </div>
-
-                            <div class="mt-6">
-                                <h4 class="text-sm font-medium text-gray-500 uppercase tracking-wider mb-2">Statistik Organisasi</h4>
-                                <dl class="grid grid-cols-2 gap-x-4 gap-y-6">
-                                    <div class="border-l-4 border-indigo-400 pl-2">
-                                        <dt class="text-sm text-gray-500">Total Kegiatan</dt>
-                                        <dd class="mt-1 text-2xl font-semibold text-gray-900"><?php echo $stats['total_activities']; ?></dd>
-                                    </div>
-                                    <div class="border-l-4 border-green-400 pl-2">
-                                        <dt class="text-sm text-gray-500">Kegiatan Aktif</dt>
-                                        <dd class="mt-1 text-2xl font-semibold text-gray-900"><?php echo $stats['active_activities']; ?></dd>
-                                    </div>
-                                    <div class="border-l-4 border-blue-400 pl-2">
-                                        <dt class="text-sm text-gray-500">Total Pendaftar</dt>
-                                        <dd class="mt-1 text-2xl font-semibold text-gray-900"><?php echo $stats['total_applications']; ?></dd>
-                                    </div>
-                                    <div class="border-l-4 border-yellow-400 pl-2">
-                                        <dt class="text-sm text-gray-500">Menunggu Review</dt>
-                                        <dd class="mt-1 text-2xl font-semibold text-gray-900"><?php echo $stats['pending_applications']; ?></dd>
-                                    </div>
-                                </dl>
+                            <div class="ml-3">
+                                <p class="text-sm text-green-700">
+                                    <?php echo $success; ?>
+                                </p>
                             </div>
                         </div>
                     </div>
+                <?php endif; ?>
+
+                <?php if($error): ?>
+                    <div class="bg-red-50 border-l-4 border-red-400 p-4 mx-4 mt-4">
+                        <div class="flex">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-exclamation-circle text-red-400"></i>
+                            </div>
+                            <div class="ml-3">
+                                <p class="text-sm text-red-700">
+                                    <?php echo $error; ?>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                <?php endif; ?>
+
+                <div class="border-t border-gray-200 px-4 py-5 sm:p-6">
+                    <div class="grid grid-cols-6 gap-6">
+                        <div class="col-span-6 sm:col-span-4">
+                            <label for="name" class="block text-sm font-medium text-gray-700">Nama PIC</label>
+                            <input type="text" name="name" id="name" value="<?php echo htmlspecialchars($owner['name']); ?>" required class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
+                        </div>
+
+                        <div class="col-span-6 sm:col-span-4">
+                            <label for="organization_name" class="block text-sm font-medium text-gray-700">Nama Organisasi</label>
+                            <input type="text" name="organization_name" id="organization_name" value="<?php echo htmlspecialchars($owner['organization_name'] ?? ''); ?>" required class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
+                        </div>
+
+                        <div class="col-span-6">
+                            <label for="organization_description" class="block text-sm font-medium text-gray-700">Deskripsi Organisasi</label>
+                            <textarea id="organization_description" name="organization_description" rows="4" class="mt-1 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"><?php echo htmlspecialchars($owner['organization_description'] ?? ''); ?></textarea>
+                            <p class="mt-2 text-sm text-gray-500">Jelaskan tentang organisasi Anda, visi, misi, dan fokus kegiatannya.</p>
+                        </div>
+
+                        <div class="col-span-6 sm:col-span-4">
+                            <label for="website" class="block text-sm font-medium text-gray-700">Website</label>
+                            <input type="url" name="website" id="website" value="<?php echo htmlspecialchars($owner['website'] ?? ''); ?>" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md" placeholder="https://www.example.org">
+                        </div>
+
+                        <div class="col-span-6 border-t border-gray-200 pt-6">
+                            <h3 class="text-lg font-medium text-gray-900">Ubah Password</h3>
+                            <p class="mt-1 text-sm text-gray-500">Kosongkan jika Anda tidak ingin mengubah password.</p>
+                        </div>
+
+                        <div class="col-span-6 sm:col-span-4">
+                            <label for="current_password" class="block text-sm font-medium text-gray-700">Password Saat Ini</label>
+                            <input type="password" name="current_password" id="current_password" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
+                        </div>
+
+                        <div class="col-span-6 sm:col-span-4">
+                            <label for="new_password" class="block text-sm font-medium text-gray-700">Password Baru</label>
+                            <input type="password" name="new_password" id="new_password" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
+                        </div>
+
+                        <div class="col-span-6 sm:col-span-4">
+                            <label for="confirm_password" class="block text-sm font-medium text-gray-700">Konfirmasi Password Baru</label>
+                            <input type="password" name="confirm_password" id="confirm_password" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
+                        </div>
+                    </div>
                 </div>
-
-                <!-- Profile Form -->
-                <div class="md:col-span-2">
-                    <form action="profile.php" method="POST" class="bg-white shadow overflow-hidden sm:rounded-lg">
-                        <div class="px-4 py-5 sm:px-6 bg-gray-50">
-                            <h3 class="text-lg leading-6 font-medium text-gray-900">Edit Profil Organisasi</h3>
-                            <p class="mt-1 max-w-2xl text-sm text-gray-500">Perbarui informasi organisasi Anda</p>
-                        </div>
-
-                        <?php if($success): ?>
-                            <div class="bg-green-50 border-l-4 border-green-400 p-4 mx-4 mt-4">
-                                <div class="flex">
-                                    <div class="flex-shrink-0">
-                                        <i class="fas fa-check-circle text-green-400"></i>
-                                    </div>
-                                    <div class="ml-3">
-                                        <p class="text-sm text-green-700">
-                                            <?php echo $success; ?>
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        <?php endif; ?>
-
-                        <?php if($error): ?>
-                            <div class="bg-red-50 border-l-4 border-red-400 p-4 mx-4 mt-4">
-                                <div class="flex">
-                                    <div class="flex-shrink-0">
-                                        <i class="fas fa-exclamation-circle text-red-400"></i>
-                                    </div>
-                                    <div class="ml-3">
-                                        <p class="text-sm text-red-700">
-                                            <?php echo $error; ?>
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        <?php endif; ?>
-
-                        <div class="border-t border-gray-200 px-4 py-5 sm:p-6">
-                            <div class="grid grid-cols-6 gap-6">
-                                <div class="col-span-6 sm:col-span-4">
-                                    <label for="name" class="block text-sm font-medium text-gray-700">Nama PIC</label>
-                                    <input type="text" name="name" id="name" value="<?php echo htmlspecialchars($owner['name']); ?>" required class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
-                                </div>
-
-                                <div class="col-span-6 sm:col-span-4">
-                                    <label for="organization_name" class="block text-sm font-medium text-gray-700">Nama Organisasi</label>
-                                    <input type="text" name="organization_name" id="organization_name" value="<?php echo htmlspecialchars($owner['organization_name'] ?? ''); ?>" required class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
-                                </div>
-
-                                <div class="col-span-6">
-                                    <label for="organization_description" class="block text-sm font-medium text-gray-700">Deskripsi Organisasi</label>
-                                    <textarea id="organization_description" name="organization_description" rows="4" class="mt-1 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"><?php echo htmlspecialchars($owner['organization_description'] ?? ''); ?></textarea>
-                                    <p class="mt-2 text-sm text-gray-500">Jelaskan tentang organisasi Anda, visi, misi, dan fokus kegiatannya.</p>
-                                </div>
-
-                                <div class="col-span-6 sm:col-span-4">
-                                    <label for="website" class="block text-sm font-medium text-gray-700">Website</label>
-                                    <input type="url" name="website" id="website" value="<?php echo htmlspecialchars($owner['website'] ?? ''); ?>" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md" placeholder="https://www.example.org">
-                                </div>
-
-                                <div class="col-span-6 border-t border-gray-200 pt-6">
-                                    <h3 class="text-lg font-medium text-gray-900">Ubah Password</h3>
-                                    <p class="mt-1 text-sm text-gray-500">Kosongkan jika Anda tidak ingin mengubah password.</p>
-                                </div>
-
-                                <div class="col-span-6 sm:col-span-4">
-                                    <label for="current_password" class="block text-sm font-medium text-gray-700">Password Saat Ini</label>
-                                    <input type="password" name="current_password" id="current_password" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
-                                </div>
-
-                                <div class="col-span-6 sm:col-span-4">
-                                    <label for="new_password" class="block text-sm font-medium text-gray-700">Password Baru</label>
-                                    <input type="password" name="new_password" id="new_password" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
-                                </div>
-
-                                <div class="col-span-6 sm:col-span-4">
-                                    <label for="confirm_password" class="block text-sm font-medium text-gray-700">Konfirmasi Password Baru</label>
-                                    <input type="password" name="confirm_password" id="confirm_password" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
-                                </div>
-                            </div>
-                        </div>
-                        <div class="px-4 py-3 bg-gray-50 text-right sm:px-6">
-                            <button type="submit" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                                <i class="fas fa-save mr-2"></i> Simpan Perubahan
-                            </button>
-                        </div>
-                    </form>
+                <div class="px-4 py-3 bg-gray-50 text-right sm:px-6">
+                    <button type="submit" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        <i class="fas fa-save mr-2"></i> Simpan Perubahan
+                    </button>
                 </div>
-            </div>
-        </main>
+            </form>
+        </div>
     </div>
-</body>
-</html>
+</main>
+
+<?php include '../../includes/footer.php'; ?>

@@ -170,35 +170,21 @@ try {
                                                 <i class="fas fa-<?php echo $status_icon; ?> mr-1"></i>
                                                 <?php echo $status_text; ?>
                                             </span>
+                                            <span class="mt-2 text-xs text-gray-500">
+                                                <?php echo date('d M Y', strtotime($app['event_date'])); ?>
+                                            </span>
                                         </div>
                                     </div>
-                                    <div class="mt-2 sm:flex sm:justify-between">
-                                        <div class="sm:flex">
-                                            <p class="flex items-center text-sm text-gray-500">
-                                                <svg class="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                                                    <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd" />
-                                                </svg>
-                                                <?php echo htmlspecialchars($app['location']); ?>
-                                            </p>
-                                            <p class="mt-2 flex items-center text-sm text-gray-500 sm:mt-0 sm:ml-6">
-                                                <svg class="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                                                    <path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd" />
-                                                </svg>
-                                                <?php echo date('d M Y', strtotime($app['event_date'])); ?>
-                                            </p>
+                                    <div class="mt-4 flex justify-between items-center">
+                                        <div class="text-sm text-gray-600">
+                                            <i class="far fa-clock mr-1 text-gray-400"></i> Diajukan pada <?php echo date('d M Y', strtotime($app['applied_at'])); ?>
                                         </div>
-                                        <div class="mt-2 flex items-center text-sm text-gray-500 sm:mt-0">
-                                            <div class="flex items-center">
-                                                <?php if($certificate_eligible): ?>
-                                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-xs font-medium bg-green-100 text-green-800 mr-2">
-                                                        <i class="fas fa-certificate mr-1"></i> Piagam Tersedia
-                                                    </span>
-                                                <?php endif; ?>
-                                                <svg class="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                                                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clip-rule="evenodd" />
-                                                </svg>
-                                                Diajukan pada <?php echo date('d M Y', strtotime($app['applied_at'])); ?>
-                                            </div>
+                                        <div>
+                                            <?php if($certificate_eligible): ?>
+                                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-md text-sm font-medium bg-indigo-100 text-indigo-800 mr-2">
+                                                    <i class="fas fa-certificate mr-1"></i> Piagam Tersedia
+                                                </span>
+                                            <?php endif; ?>
                                         </div>
                                     </div>
                                 </div>
@@ -208,20 +194,20 @@ try {
                     </ul>
                 </div>
                 <?php else: ?>
-                <div class="bg-white shadow overflow-hidden sm:rounded-lg">
-                    <div class="px-4 py-5 sm:p-6 text-center">
-                        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
-                        </svg>
-                        <h3 class="mt-2 text-sm font-medium text-gray-900">Anda belum mendaftar kegiatan volunteer</h3>
-                        <p class="mt-1 text-sm text-gray-500">
-                            Cari dan daftarkan diri Anda untuk kegiatan volunteer sekarang.
-                        </p>
-                        <div class="mt-6">
-                            <a href="search.php" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700">
-                                <i class="fas fa-search mr-2"></i> Cari Kegiatan
-                            </a>
+                <div class="bg-white shadow-lg rounded-lg overflow-hidden">
+                    <div class="px-4 py-16 sm:p-6 text-center">
+                        <div class="rounded-full bg-indigo-100 w-20 h-20 flex items-center justify-center mx-auto mb-4">
+                            <svg class="h-10 w-10 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
+                            </svg>
                         </div>
+                        <h3 class="text-xl font-medium text-gray-900 mb-2">Anda belum mendaftar kegiatan volunteer</h3>
+                        <p class="text-gray-500 mb-6 max-w-md mx-auto">
+                            Cari dan daftarkan diri Anda untuk kegiatan volunteer sekarang untuk membantu komunitas dan mengembangkan diri.
+                        </p>
+                        <a href="search.php" class="inline-flex items-center px-5 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 transition duration-150">
+                            <i class="fas fa-search mr-2"></i> Cari Kegiatan
+                        </a>
                     </div>
                 </div>
                 <?php endif; ?>
@@ -229,18 +215,21 @@ try {
             
             <!-- Certificate Section for Eligible Applications -->
             <?php if($eligible_count > 0): ?>
-            <div class="mt-8 px-4 sm:px-0">
-                <div class="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-lg shadow-md p-6 text-white">
-                    <div class="md:flex md:items-center md:justify-between">
+            <div class="mt-10 px-4 sm:px-0">
+                <div class="bg-gradient-to-r from-indigo-600 to-purple-600 rounded-xl shadow-xl p-6 text-white relative overflow-hidden">
+                    <div class="absolute inset-0 bg-pattern opacity-10"></div>
+                    <div class="md:flex md:items-center md:justify-between relative z-10">
                         <div>
-                            <h3 class="text-lg font-medium">Piagam Tersedia</h3>
-                            <p class="mt-1 text-sm text-indigo-100">
-                                Anda memiliki piagam yang tersedia untuk kegiatan volunteer yang telah selesai.
+                            <h3 class="text-xl font-bold flex items-center">
+                                <i class="fas fa-certificate mr-2"></i> Piagam Tersedia
+                            </h3>
+                            <p class="mt-2 text-lg text-indigo-100">
+                                Anda memiliki <?php echo $eligible_count; ?> piagam yang tersedia untuk kegiatan volunteer yang telah selesai
                             </p>
                         </div>
                         <div class="mt-4 md:mt-0">
-                            <a href="certificates.php" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-indigo-700 bg-white hover:bg-indigo-50">
-                                <i class="fas fa-certificate mr-2"></i> Lihat Piagam
+                            <a href="certificates.php" class="inline-flex items-center px-5 py-3 border border-transparent text-base font-medium rounded-md shadow-md text-indigo-700 bg-white hover:bg-indigo-50 transition duration-150">
+                                <i class="fas fa-award mr-2"></i> Lihat Piagam
                             </a>
                         </div>
                     </div>
@@ -249,19 +238,13 @@ try {
             <?php endif; ?>
         </main>
 
-        <!-- Footer -->
-        <footer class="bg-gray-800 mt-12">
-            <div class="max-w-7xl mx-auto py-12 px-4 sm:px-6 lg:px-8">
-                <div class="md:flex md:items-center md:justify-between">
-                    <div class="flex justify-center md:order-2">
-                        <p class="text-center text-gray-400">&copy; 2023 VolunteerHub. All rights reserved.</p>
-                    </div>
-                    <div class="mt-8 md:mt-0 md:order-1">
-                        <p class="text-center text-base text-gray-400">Made with ❤️ for community impact</p>
-                    </div>
-                </div>
-            </div>
-        </footer>
+        <?php include '../../includes/footer.php'; ?>
+
+        <style>
+        .bg-pattern {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Cg fill='%23ffffff' fill-opacity='0.1'%3E%3Cpath fill-rule='evenodd' d='M0 0h40v40H0V0zm40 40h40v40H40V40zm0-40h2l-2 2V0zm0 4l4-4h2l-6 6V4zm0 4l8-8h2L40 10V8zm0 4L52 0h2L40 14v-2zm0 4L56 0h2L40 18v-2zm0 4L60 0h2L40 22v-2zm0 4L64 0h2L40 26v-2zm0 4L68 0h2L40 30v-2zm0 4L72 0h2L40 34v-2zm0 4L76 0h2L40 38v-2zm0 4L80 0v2L42 40h-2zm4 0L80 4v2L46 40h-2zm4 0L80 8v2L50 40h-2zm4 0l28-28v2L54 40h-2zm4 0l24-24v2L58 40h-2zm4 0l20-20v2L62 40h-2zm4 0l16-16v2L66 40h-2zm4 0l12-12v2L70 40h-2zm4 0l8-8v2l-6 6h-2zm4 0l4-4v2l-2 2h-2z'/%3E%3C/g%3E%3C/svg%3E");
+        }
+        </style>
     </div>
 </body>
 </html>

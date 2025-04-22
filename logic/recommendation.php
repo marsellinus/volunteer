@@ -9,272 +9,232 @@
 /**
  * Get volunteer activity recommendations for a specific user
  * 
- * @param int $userId - The user ID to generate recommendations for
- * @param mysqli $conn - Database connection object
- * @return mysqli_result|false - Result set of recommended activities
+ * @param int $user_id User ID
+ * @param mysqli $conn Database connection
+ * @return mysqli_result Recommendations result set
  */
-function getVolunteerRecommendations($userId, $conn) {
-    // 1. Get user's activity history (views and applications)
-    $userHistory = getUserActivityHistory($userId, $conn);
+function getVolunteerRecommendations($user_id, $conn) {
+    // Get user's past applications
+    $history_query = "SELECT va.category, va.location 
+                      FROM applications a
+                      JOIN volunteer_activities va ON a.activity_id = va.id
+                      WHERE a.user_id = $user_id";
     
-    // 2. Get category preferences based on history
-    $categoryPreferences = getCategoryPreferences($userHistory, $conn);
+    $history_result = $conn->query($history_query);
     
-    // 3. Get location preferences based on history
-    $locationPreferences = getLocationPreferences($userHistory, $conn);
+    // Collect user's interests based on categories and locations they've applied to
+    $categories = [];
+    $locations = [];
     
-    // 4. Build recommendation query based on preferences
-    $recommendationQuery = buildRecommendationQuery($userId, $categoryPreferences, $locationPreferences, $conn);
-    
-    // 5. Execute query and return results
-    return $conn->query($recommendationQuery);
-}
-
-/**
- * Get user's activity history including views and applications
- * 
- * @param int $userId - The user ID
- * @param mysqli $conn - Database connection object
- * @return array - Array containing user's viewed and applied activities
- */
-function getUserActivityHistory($userId, $conn) {
-    $history = [
-        'views' => [],
-        'applications' => [],
-        'last_search' => ''
-    ];
-    
-    // Get viewed activities
-    $viewsQuery = "SELECT activity_id, COUNT(*) as view_count 
-                  FROM activity_views 
-                  WHERE user_id = ? 
-                  GROUP BY activity_id 
-                  ORDER BY view_count DESC";
-                  
-    $stmt = $conn->prepare($viewsQuery);
-    $stmt->bind_param("i", $userId);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    
-    while ($row = $result->fetch_assoc()) {
-        $history['views'][$row['activity_id']] = $row['view_count'];
-    }
-    
-    // Get applied activities
-    $applicationsQuery = "SELECT activity_id 
-                         FROM applications 
-                         WHERE user_id = ?";
-                         
-    $stmt = $conn->prepare($applicationsQuery);
-    $stmt->bind_param("i", $userId);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    
-    while ($row = $result->fetch_assoc()) {
-        $history['applications'][] = $row['activity_id'];
-    }
-    
-    // Get last search query
-    $searchQuery = "SELECT search_query 
-                   FROM user_searches 
-                   WHERE user_id = ? 
-                   ORDER BY search_time DESC 
-                   LIMIT 1";
-                   
-    $stmt = $conn->prepare($searchQuery);
-    $stmt->bind_param("i", $userId);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    
-    if ($row = $result->fetch_assoc()) {
-        $history['last_search'] = $row['search_query'];
-    }
-    
-    return $history;
-}
-
-/**
- * Calculate category preferences based on user history
- * 
- * @param array $userHistory - User's activity history
- * @param mysqli $conn - Database connection object
- * @return array - Array of categories with weight scores
- */
-function getCategoryPreferences($userHistory, $conn) {
-    $categoryScores = [];
-    
-    // Extract categories from viewed activities
-    foreach ($userHistory['views'] as $activityId => $viewCount) {
-        $query = "SELECT category FROM volunteer_activities WHERE id = ?";
-        $stmt = $conn->prepare($query);
-        $stmt->bind_param("i", $activityId);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        
-        if ($row = $result->fetch_assoc()) {
-            $category = $row['category'];
-            if (!isset($categoryScores[$category])) {
-                $categoryScores[$category] = 0;
-            }
-            $categoryScores[$category] += $viewCount;
+    if ($history_result && $history_result->num_rows > 0) {
+        while ($row = $history_result->fetch_assoc()) {
+            $categories[] = $row['category'];
+            $locations[] = $row['location'];
         }
     }
     
-    // Extract categories from applied activities (higher weight)
-    foreach ($userHistory['applications'] as $activityId) {
-        $query = "SELECT category FROM volunteer_activities WHERE id = ?";
-        $stmt = $conn->prepare($query);
-        $stmt->bind_param("i", $activityId);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        
-        if ($row = $result->fetch_assoc()) {
-            $category = $row['category'];
-            if (!isset($categoryScores[$category])) {
-                $categoryScores[$category] = 0;
-            }
-            $categoryScores[$category] += 5; // Applied activities get higher weight
-        }
-    }
-    
-    // Sort by score in descending order
-    arsort($categoryScores);
-    
-    return $categoryScores;
-}
-
-/**
- * Calculate location preferences based on user history
- * 
- * @param array $userHistory - User's activity history
- * @param mysqli $conn - Database connection object
- * @return array - Array of locations with weight scores
- */
-function getLocationPreferences($userHistory, $conn) {
-    $locationScores = [];
-    
-    // Extract locations from viewed activities
-    foreach ($userHistory['views'] as $activityId => $viewCount) {
-        $query = "SELECT location FROM volunteer_activities WHERE id = ?";
-        $stmt = $conn->prepare($query);
-        $stmt->bind_param("i", $activityId);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        
-        if ($row = $result->fetch_assoc()) {
-            $location = $row['location'];
-            if (!isset($locationScores[$location])) {
-                $locationScores[$location] = 0;
-            }
-            $locationScores[$location] += $viewCount;
-        }
-    }
-    
-    // Extract locations from applied activities (higher weight)
-    foreach ($userHistory['applications'] as $activityId) {
-        $query = "SELECT location FROM volunteer_activities WHERE id = ?";
-        $stmt = $conn->prepare($query);
-        $stmt->bind_param("i", $activityId);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        
-        if ($row = $result->fetch_assoc()) {
-            $location = $row['location'];
-            if (!isset($locationScores[$location])) {
-                $locationScores[$location] = 0;
-            }
-            $locationScores[$location] += 3; // Applied activities get higher weight
-        }
-    }
-    
-    // Sort by score in descending order
-    arsort($locationScores);
-    
-    return $locationScores;
-}
-
-/**
- * Build SQL query for recommendations based on user preferences
- * 
- * @param int $userId - The user ID
- * @param array $categoryPreferences - User's category preferences
- * @param array $locationPreferences - User's location preferences
- * @param mysqli $conn - Database connection object
- * @return string - SQL query for fetching recommendations
- */
-function buildRecommendationQuery($userId, $categoryPreferences, $locationPreferences, $conn) {
-    // Start with base query
-    $query = "SELECT * FROM volunteer_activities WHERE application_deadline >= CURDATE() ";
-    
-    // Exclude activities the user has already applied to
-    $query .= "AND id NOT IN (SELECT activity_id FROM applications WHERE user_id = $userId) ";
-    
-    // Add category preferences if available
-    if (!empty($categoryPreferences)) {
-        $topCategories = array_slice(array_keys($categoryPreferences), 0, 3); // Get top 3 categories
-        if (!empty($topCategories)) {
-            $escapedCategories = array_map(function($category) use ($conn) {
-                return "'" . $conn->real_escape_string($category) . "'";
-            }, $topCategories);
+    // Check if user has search history - handle case when table doesn't exist
+    $search_terms = [];
+    try {
+        // Check if search_history table exists
+        $table_check = $conn->query("SHOW TABLES LIKE 'search_history'");
+        if ($table_check && $table_check->num_rows > 0) {
+            $search_query = "SELECT search_term FROM search_history WHERE user_id = $user_id ORDER BY search_date DESC LIMIT 10";
+            $search_result = $conn->query($search_query);
             
-            $categoriesStr = implode(',', $escapedCategories);
-            $query .= "ORDER BY CASE 
-                      WHEN category IN ($categoriesStr) THEN 0 
-                      ELSE 1 
-                      END, ";
-                      
-            // Prioritize by specific category order
-            foreach ($topCategories as $index => $category) {
-                $escapedCategory = $conn->real_escape_string($category);
-                $query .= "CASE WHEN category = '$escapedCategory' THEN $index ELSE 999 END, ";
+            if ($search_result && $search_result->num_rows > 0) {
+                while ($row = $search_result->fetch_assoc()) {
+                    $search_terms[] = $row['search_term'];
+                }
             }
+        } else {
+            // Create search_history table if it doesn't exist
+            createSearchHistoryTable($conn);
+        }
+    } catch (Exception $e) {
+        // Silently handle the error - this isn't critical functionality
+    }
+    
+    // Build recommendation query based on user history
+    $base_query = "SELECT va.*, o.name as organization_name, 
+                   (SELECT COUNT(*) FROM applications WHERE activity_id = va.id) as application_count";
+    
+    // Add scoring formula
+    $score_formula = [];
+    
+    if (!empty($categories)) {
+        $category_weights = array_count_values($categories);
+        $category_conditions = [];
+        
+        foreach ($category_weights as $category => $weight) {
+            $escaped_category = $conn->real_escape_string($category);
+            $normalized_weight = min($weight * 10, 50); // Cap at 50 points
+            $category_conditions[] = "CASE WHEN va.category = '$escaped_category' THEN $normalized_weight ELSE 0 END";
+        }
+        
+        if (!empty($category_conditions)) {
+            $score_formula[] = '(' . implode(' + ', $category_conditions) . ')';
         }
     }
     
-    // Add location preferences if no strong category preferences
-    if (empty($categoryPreferences) && !empty($locationPreferences)) {
-        $topLocations = array_slice(array_keys($locationPreferences), 0, 2); // Get top 2 locations
-        if (!empty($topLocations)) {
-            $escapedLocations = array_map(function($location) use ($conn) {
-                return "'" . $conn->real_escape_string($location) . "'";
-            }, $topLocations);
+    if (!empty($locations)) {
+        $location_weights = array_count_values($locations);
+        $location_conditions = [];
+        
+        foreach ($location_weights as $location => $weight) {
+            $escaped_location = $conn->real_escape_string($location);
+            $normalized_weight = min($weight * 8, 40); // Cap at 40 points
+            $location_conditions[] = "CASE WHEN va.location = '$escaped_location' THEN $normalized_weight ELSE 0 END";
+        }
+        
+        if (!empty($location_conditions)) {
+            $score_formula[] = '(' . implode(' + ', $location_conditions) . ')';
+        }
+    }
+    
+    // Add search term matching
+    if (!empty($search_terms)) {
+        $search_conditions = [];
+        $search_count = count($search_terms);
+        
+        foreach ($search_terms as $index => $term) {
+            $escaped_term = $conn->real_escape_string($term);
+            $recency_weight = max(5, 30 - ($index * 5)); // More recent searches get higher weight
             
-            $locationsStr = implode(',', $escapedLocations);
-            $query .= "CASE 
-                      WHEN location IN ($locationsStr) THEN 0 
-                      ELSE 1 
-                      END, ";
+            $search_conditions[] = "CASE 
+                WHEN va.title LIKE '%$escaped_term%' THEN $recency_weight
+                WHEN va.description LIKE '%$escaped_term%' THEN " . ($recency_weight / 2) . "
+                WHEN va.category LIKE '%$escaped_term%' THEN " . ($recency_weight / 3) . "
+                ELSE 0 
+            END";
+        }
+        
+        if (!empty($search_conditions)) {
+            $score_formula[] = '(' . implode(' + ', $search_conditions) . ')';
         }
     }
     
-    // Final ordering criteria
-    $query .= "event_date ASC LIMIT 6";
+    // Include featured activities bonus
+    $score_formula[] = "(CASE WHEN va.is_featured = 1 THEN 20 ELSE 0 END)";
     
-    return $query;
+    // Include recency bonus (newer activities score higher)
+    $score_formula[] = "(CASE 
+        WHEN DATEDIFF(va.event_date, CURDATE()) BETWEEN 0 AND 7 THEN 15
+        WHEN DATEDIFF(va.event_date, CURDATE()) BETWEEN 8 AND 14 THEN 10
+        WHEN DATEDIFF(va.event_date, CURDATE()) BETWEEN 15 AND 30 THEN 5
+        ELSE 0 END)";
+    
+    // Build final query with scoring
+    $from_clause = "FROM volunteer_activities va 
+                   JOIN owners o ON va.owner_id = o.owner_id";
+    
+    if (!empty($score_formula)) {
+        $score_calculation = implode(' + ', $score_formula);
+        $base_query .= ", ($score_calculation) as recommendation_score $from_clause";
+        $where_clause = "WHERE va.application_deadline >= CURDATE() AND 
+                         NOT EXISTS (SELECT 1 FROM applications WHERE user_id = $user_id AND activity_id = va.id)";
+        $order_by = "ORDER BY recommendation_score DESC, va.event_date ASC";
+        $limit = "LIMIT 6";
+    } else {
+        // Fallback to default sorting if no personalization data available
+        $base_query .= " $from_clause";
+        $where_clause = "WHERE va.application_deadline >= CURDATE()";
+        $order_by = "ORDER BY va.is_featured DESC, va.event_date ASC";
+        $limit = "LIMIT 6";
+    }
+    
+    // Execute final recommendation query
+    $recommendation_query = "$base_query $where_clause $order_by $limit";
+    return $conn->query($recommendation_query);
 }
 
 /**
- * Log activity view for recommendation system
+ * Log user search queries for better recommendations
  * 
- * @param int $userId - The user ID
- * @param int $activityId - The activity ID being viewed
- * @param mysqli $conn - Database connection object
+ * @param int $user_id User ID
+ * @param string $search_term Search term
+ * @param mysqli $conn Database connection
+ * @return bool Success status
  */
-function logActivityView($userId, $activityId, $conn) {
-    $stmt = $conn->prepare("INSERT INTO activity_views (user_id, activity_id, view_time) VALUES (?, ?, NOW())");
-    $stmt->bind_param("ii", $userId, $activityId);
-    $stmt->execute();
+function logSearchQuery($user_id, $search_term, $conn) {
+    // Check if search_history table exists, create it if not
+    try {
+        $table_check = $conn->query("SHOW TABLES LIKE 'search_history'");
+        if ($table_check->num_rows == 0) {
+            createSearchHistoryTable($conn);
+        }
+
+        // Log the search query
+        $stmt = $conn->prepare("INSERT INTO search_history (user_id, search_term) VALUES (?, ?)");
+        $stmt->bind_param("is", $user_id, $search_term);
+        return $stmt->execute();
+    } catch (Exception $e) {
+        // Silently fail if there's an error - this isn't critical functionality
+        return false;
+    }
 }
 
 /**
- * Log search query for recommendation system
- * 
- * @param int $userId - The user ID
- * @param string $searchQuery - The search query text
- * @param mysqli $conn - Database connection object
+ * Create search_history table if it doesn't exist
+ *
+ * @param mysqli $conn Database connection
+ * @return bool Success status
  */
-function logSearchQuery($userId, $searchQuery, $conn) {
-    $stmt = $conn->prepare("INSERT INTO user_searches (user_id, search_query, search_time) VALUES (?, ?, NOW())");
-    $stmt->bind_param("is", $userId, $searchQuery);
-    $stmt->execute();
+function createSearchHistoryTable($conn) {
+    try {
+        $create_table = "CREATE TABLE IF NOT EXISTS search_history (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            search_term VARCHAR(255) NOT NULL,
+            search_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE
+        )";
+        return $conn->query($create_table);
+    } catch (Exception $e) {
+        return false;
+    }
 }
+
+/**
+ * Log user views of volunteer activities for better recommendations
+ * 
+ * @param int $user_id User ID
+ * @param int $activity_id Activity ID
+ * @param mysqli $conn Database connection
+ * @return bool Success status
+ */
+function logActivityView($user_id, $activity_id, $conn) {
+    try {
+        // Check if activity_views table exists, create it if not
+        $table_check = $conn->query("SHOW TABLES LIKE 'activity_views'");
+        if ($table_check->num_rows == 0) {
+            $create_table = "CREATE TABLE activity_views (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                user_id INT NOT NULL,
+                activity_id INT NOT NULL,
+                view_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+                FOREIGN KEY (activity_id) REFERENCES volunteer_activities(id) ON DELETE CASCADE,
+                INDEX idx_user_activity (user_id, activity_id)
+            )";
+            $conn->query($create_table);
+        }
+
+        // Log the view (only once per day per user per activity)
+        $stmt = $conn->prepare("
+            INSERT INTO activity_views (user_id, activity_id) 
+            SELECT ?, ?
+            FROM dual
+            WHERE NOT EXISTS (
+                SELECT 1 FROM activity_views 
+                WHERE user_id = ? AND activity_id = ? AND DATE(view_date) = CURDATE()
+            )
+        ");
+        $stmt->bind_param("iiii", $user_id, $activity_id, $user_id, $activity_id);
+        return $stmt->execute();
+    } catch (Exception $e) {
+        // Silently fail if there's an error - this isn't critical functionality
+        return false;
+    }
+}
+?>

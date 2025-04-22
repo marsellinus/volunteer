@@ -1,5 +1,6 @@
 <?php
 include_once '../../config/database.php';
+include_once '../../includes/notifications.php';
 session_start();
 
 // Check if owner is logged in
@@ -11,222 +12,385 @@ if(!isset($_SESSION['owner_id'])) {
 $owner_id = $_SESSION['owner_id'];
 $owner_name = $_SESSION['owner_name'];
 
-// Get all activities created by this owner
-$activities = $conn->query("SELECT * FROM volunteer_activities WHERE owner_id = $owner_id ORDER BY created_at DESC");
+$page_title = 'Dashboard Pengelola - VolunteerHub';
 
-// Get recent applications for owner's activities
-$applications = $conn->query("SELECT a.*, u.name as user_name, va.title as activity_title 
-                            FROM applications a 
-                            JOIN users u ON a.user_id = u.user_id 
-                            JOIN volunteer_activities va ON a.activity_id = va.id 
-                            WHERE va.owner_id = $owner_id 
-                            ORDER BY a.applied_at DESC 
-                            LIMIT 10");
+// Get statistics
+$stats = [
+    'active_activities' => 0,
+    'total_activities' => 0,
+    'pending_applications' => 0,
+    'total_applications' => 0
+];
+
+// Get active activities count
+try {
+    $active_query = $conn->query("SELECT COUNT(*) as count FROM volunteer_activities WHERE owner_id = $owner_id AND application_deadline >= CURDATE()");
+    if($result = $active_query->fetch_assoc()) {
+        $stats['active_activities'] = $result['count'];
+    }
+} catch (Exception $e) {
+    // Handle silently
+}
+
+// Get total activities count
+try {
+    $total_query = $conn->query("SELECT COUNT(*) as count FROM volunteer_activities WHERE owner_id = $owner_id");
+    if($result = $total_query->fetch_assoc()) {
+        $stats['total_activities'] = $result['count'];
+    }
+} catch (Exception $e) {
+    // Handle silently
+}
+
+// Get pending applications count
+try {
+    $pending_query = $conn->query("
+        SELECT COUNT(*) as count FROM applications a 
+        JOIN volunteer_activities va ON a.activity_id = va.id
+        WHERE va.owner_id = $owner_id AND a.status = 'pending'
+    ");
+    if($result = $pending_query->fetch_assoc()) {
+        $stats['pending_applications'] = $result['count'];
+    }
+} catch (Exception $e) {
+    // Handle silently
+}
+
+// Get total applications count
+try {
+    $applications_query = $conn->query("
+        SELECT COUNT(*) as count FROM applications a 
+        JOIN volunteer_activities va ON a.activity_id = va.id
+        WHERE va.owner_id = $owner_id
+    ");
+    if($result = $applications_query->fetch_assoc()) {
+        $stats['total_applications'] = $result['count'];
+    }
+} catch (Exception $e) {
+    // Handle silently
+}
+
+// Get latest activities
+try {
+    $latest_activities = $conn->query("
+        SELECT va.*, 
+               (SELECT COUNT(*) FROM applications WHERE activity_id = va.id) as application_count
+        FROM volunteer_activities va 
+        WHERE va.owner_id = $owner_id
+        ORDER BY va.created_at DESC
+        LIMIT 5
+    ");
+} catch (Exception $e) {
+    $latest_activities = null;
+}
+
+// Get latest applications
+try {
+    $latest_applications = $conn->query("
+        SELECT a.*, va.title, u.name as user_name
+        FROM applications a
+        JOIN volunteer_activities va ON a.activity_id = va.id
+        JOIN users u ON a.user_id = u.user_id
+        WHERE va.owner_id = $owner_id
+        ORDER BY a.applied_at DESC
+        LIMIT 5
+    ");
+} catch (Exception $e) {
+    $latest_applications = null;
+}
+
+// Get unread notifications count with error handling - using try/catch for all notifications-related code
+$unread_count = 0;
+try {
+    // Check if notifications table exists
+    $table_check = $conn->query("SHOW TABLES LIKE 'notifications'");
+    if($table_check && $table_check->num_rows > 0) {
+        // Table exists, get unread count
+        $unread_count = getOwnerUnreadNotificationsCount($owner_id, $conn);
+    } else {
+        // Table doesn't exist, create it
+        $create_table = "CREATE TABLE IF NOT EXISTS notifications (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NULL,
+            owner_id INT NULL,
+            title VARCHAR(255) NOT NULL,
+            message TEXT NOT NULL,
+            type VARCHAR(50) NOT NULL,
+            link VARCHAR(255) NULL,
+            is_read TINYINT(1) DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+            FOREIGN KEY (owner_id) REFERENCES owners(owner_id) ON DELETE CASCADE
+        )";
+        $conn->query($create_table);
+        
+        // Create indexes
+        $conn->query("CREATE INDEX idx_notifications_user ON notifications(user_id, is_read)");
+        $conn->query("CREATE INDEX idx_notifications_owner ON notifications(owner_id, is_read)");
+    }
+} catch (Exception $e) {
+    // Just keep the default value of 0
+}
+
+// Include the header
+include_once '../../includes/header_owner.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Owner Dashboard - VolunteerHub</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-50">
-    <div class="min-h-screen">
-        <!-- Navigation -->
-        <nav class="bg-indigo-600">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="flex justify-between h-16">
-                    <div class="flex">
-                        <div class="flex-shrink-0 flex items-center">
-                            <h1 class="text-xl font-bold text-white">VolunteerHub</h1>
-                        </div>
-                        <div class="ml-6 flex items-center space-x-4">
-                            <a href="index.php" class="text-white hover:text-indigo-100 px-3 py-2 rounded-md text-sm font-medium">Dashboard</a>
-                            <a href="create_activity.php" class="text-white hover:text-indigo-100 px-3 py-2 rounded-md text-sm font-medium">Create Activity</a>
-                            <a href="manage_activities.php" class="text-white hover:text-indigo-100 px-3 py-2 rounded-md text-sm font-medium">Manage Activities</a>
-                            <a href="profile.php" class="text-white hover:text-indigo-100 px-3 py-2 rounded-md text-sm font-medium">Profile</a>
-                        </div>
+
+<!-- Main Content -->
+<main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+    <!-- Database Setup Notification (if notifications table doesn't exist) -->
+    <?php if(!isset($table_check) || $table_check->num_rows == 0): ?>
+    <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6">
+        <div class="flex">
+            <div class="flex-shrink-0">
+                <i class="fas fa-exclamation-triangle text-yellow-400"></i>
+            </div>
+            <div class="ml-3">
+                <p class="text-sm text-yellow-700">
+                    <strong>Notifikasi tidak tersedia.</strong> Database perlu diperbarui.
+                </p>
+                <p class="text-sm text-yellow-700 mt-2">
+                    <a href="../../setup/create_notifications_table.php" class="font-medium underline text-yellow-700 hover:text-yellow-600">
+                        Klik disini untuk memperbarui database
+                    </a>
+                </p>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+
+    <!-- Welcome Section -->
+    <div class="bg-gradient-to-r from-purple-700 to-indigo-700 rounded-lg shadow-lg px-6 py-8 mb-8 text-white">
+        <h1 class="text-3xl font-bold mb-2">Selamat Datang, <?php echo htmlspecialchars($owner_name); ?>!</h1>
+        <p class="text-indigo-100">Kelola kegiatan volunteer Anda dan temukan relawan yang tepat.</p>
+        <div class="mt-6 flex flex-wrap gap-3">
+            <a href="create_activity.php" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md bg-white text-indigo-700 hover:bg-indigo-50">
+                <i class="fas fa-plus-circle mr-2"></i> Buat Kegiatan Baru
+            </a>
+            <a href="manage_activities.php" class="inline-flex items-center px-4 py-2 border border-white text-sm font-medium rounded-md text-white hover:bg-indigo-600">
+                <i class="fas fa-tasks mr-2"></i> Kelola Kegiatan
+            </a>
+        </div>
+    </div>
+    
+    <!-- Stats Cards -->
+    <div class="mb-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <!-- Active Activities -->
+        <div class="bg-white overflow-hidden shadow rounded-lg">
+            <div class="px-4 py-5 sm:p-6">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0 bg-indigo-500 rounded-md p-3">
+                        <i class="fas fa-calendar-check text-white"></i>
                     </div>
-                    <div class="flex items-center">
-                        <span class="text-white mr-4">Hello, <?php echo htmlspecialchars($owner_name); ?></span>
-                        <a href="../../auth/logout.php" class="bg-indigo-700 hover:bg-indigo-800 text-white px-3 py-2 rounded-md text-sm font-medium">Logout</a>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">
+                                Kegiatan Aktif
+                            </dt>
+                            <dd class="flex items-baseline">
+                                <div class="text-2xl font-semibold text-gray-900">
+                                    <?php echo $stats['active_activities']; ?>
+                                </div>
+                                <div class="ml-2 flex items-baseline text-sm font-semibold text-green-600">
+                                    <span class="text-xs text-gray-400">dari <?php echo $stats['total_activities']; ?> total</span>
+                                </div>
+                            </dd>
+                        </dl>
                     </div>
                 </div>
             </div>
-        </nav>
-
-        <!-- Main Content -->
-        <main class="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
-            <!-- Welcome Section -->
-            <div class="px-4 py-6 sm:px-0">
-                <h2 class="text-2xl font-bold text-gray-900">Welcome back, <?php echo htmlspecialchars($owner_name); ?>!</h2>
-                <p class="mt-1 text-sm text-gray-600">Manage your volunteer activities and applicants here.</p>
+            <div class="bg-gray-50 px-4 py-4 sm:px-6">
+                <a href="manage_activities.php" class="text-sm font-medium text-indigo-600 hover:text-indigo-500">
+                    Lihat Detail <i class="fas fa-arrow-right text-xs ml-1"></i>
+                </a>
             </div>
-            
-            <!-- Quick Stats -->
-            <div class="px-4 py-6 sm:px-0">
-                <dl class="grid grid-cols-1 gap-5 sm:grid-cols-3">
-                    <div class="px-4 py-5 bg-white shadow rounded-lg overflow-hidden sm:p-6">
-                        <dt class="text-sm font-medium text-gray-500 truncate">Total Activities</dt>
-                        <dd class="mt-1 text-3xl font-semibold text-gray-900"><?php echo $activities->num_rows; ?></dd>
+        </div>
+        
+        <!-- Pending Applications -->
+        <div class="bg-white overflow-hidden shadow rounded-lg">
+            <div class="px-4 py-5 sm:p-6">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0 bg-yellow-500 rounded-md p-3">
+                        <i class="fas fa-hourglass-half text-white"></i>
                     </div>
-                    <div class="px-4 py-5 bg-white shadow rounded-lg overflow-hidden sm:p-6">
-                        <dt class="text-sm font-medium text-gray-500 truncate">Upcoming Events</dt>
-                        <dd class="mt-1 text-3xl font-semibold text-gray-900">
-                            <?php
-                                $upcoming = $conn->query("SELECT COUNT(*) as count FROM volunteer_activities WHERE owner_id = $owner_id AND event_date >= CURDATE()");
-                                $upcoming_count = $upcoming->fetch_assoc();
-                                echo $upcoming_count['count'];
-                            ?>
-                        </dd>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">
+                                Pendaftaran Menunggu
+                            </dt>
+                            <dd class="flex items-baseline">
+                                <div class="text-2xl font-semibold text-gray-900">
+                                    <?php echo $stats['pending_applications']; ?>
+                                </div>
+                                <div class="ml-2 flex items-baseline text-sm font-semibold">
+                                    <span class="text-xs text-gray-400">perlu ditinjau</span>
+                                </div>
+                            </dd>
+                        </dl>
                     </div>
-                    <div class="px-4 py-5 bg-white shadow rounded-lg overflow-hidden sm:p-6">
-                        <dt class="text-sm font-medium text-gray-500 truncate">Total Applicants</dt>
-                        <dd class="mt-1 text-3xl font-semibold text-gray-900">
-                            <?php
-                                $applicants = $conn->query("SELECT COUNT(*) as count FROM applications a 
-                                                          JOIN volunteer_activities va ON a.activity_id = va.id 
-                                                          WHERE va.owner_id = $owner_id");
-                                $applicants_count = $applicants->fetch_assoc();
-                                echo $applicants_count['count'];
-                            ?>
-                        </dd>
-                    </div>
-                </dl>
+                </div>
             </div>
-
-            <!-- My Activities Section -->
-            <div class="px-4 py-6 sm:px-0">
-                <div class="flex justify-between items-center">
-                    <h3 class="text-lg font-semibold text-gray-900">My Activities</h3>
-                    <a href="create_activity.php" class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="-ml-0.5 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" />
-                        </svg>
-                        New Activity
+            <div class="bg-gray-50 px-4 py-4 sm:px-6">
+                <a href="manage_activities.php" class="text-sm font-medium text-indigo-600 hover:text-indigo-500">
+                    Tinjau Semua <i class="fas fa-arrow-right text-xs ml-1"></i>
+                </a>
+            </div>
+        </div>
+        
+        <!-- Total Applications -->
+        <div class="bg-white overflow-hidden shadow rounded-lg">
+            <div class="px-4 py-5 sm:p-6">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0 bg-blue-500 rounded-md p-3">
+                        <i class="fas fa-users text-white"></i>
+                    </div>
+                    <div class="ml-5 w-0 flex-1">
+                        <dl>
+                            <dt class="text-sm font-medium text-gray-500 truncate">
+                                Total Pendaftaran
+                            </dt>
+                            <dd class="flex items-baseline">
+                                <div class="text-2xl font-semibold text-gray-900">
+                                    <?php echo $stats['total_applications']; ?>
+                                </div>
+                            </dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-gray-50 px-4 py-4 sm:px-6">
+                <span class="text-sm text-gray-500">
+                    Dari semua kegiatan
+                </span>
+            </div>
+        </div>
+        
+        <!-- Quick Actions -->
+        <div class="bg-white overflow-hidden shadow rounded-lg">
+            <div class="px-4 py-5 sm:p-6">
+                <h3 class="text-lg font-medium leading-6 text-gray-900 mb-2">Aksi Cepat</h3>
+                <div class="mt-2 max-w-xl text-sm text-gray-500">
+                    <p>Kelola kegiatan & pendaftar dengan cepat</p>
+                </div>
+                <div class="mt-5">
+                    <a href="create_activity.php" class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none mb-2 w-full justify-center">
+                        <i class="fas fa-plus-circle mr-2"></i> Kegiatan Baru
+                    </a>
+                    <a href="manage_activities.php?filter=pending" class="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none w-full justify-center">
+                        <i class="fas fa-clipboard-check mr-2"></i> Tinjau Pendaftaran
                     </a>
                 </div>
-                <div class="mt-4 bg-white shadow overflow-hidden sm:rounded-md">
-                    <ul role="list" class="divide-y divide-gray-200">
-                        <?php if($activities && $activities->num_rows > 0): ?>
-                            <?php while($activity = $activities->fetch_assoc()): ?>
-                                <li>
-                                    <a href="edit_activity.php?id=<?php echo $activity['id']; ?>" class="block hover:bg-gray-50">
-                                        <div class="px-4 py-4 sm:px-6">
-                                            <div class="flex items-center justify-between">
-                                                <div class="sm:flex sm:justify-between w-full">
-                                                    <p class="text-sm font-medium text-indigo-600 truncate">
-                                                        <?php echo htmlspecialchars($activity['title']); ?>
-                                                    </p>
-                                                    <div class="mt-2 flex items-center text-sm text-gray-500 sm:mt-0">
-                                                        <svg xmlns="http://www.w3.org/2000/svg" class="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
-                                                            <path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd" />
-                                                        </svg>
-                                                        <span>
-                                                            <?php echo date('M d, Y', strtotime($activity['event_date'])); ?>
-                                                        </span>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <div class="mt-2 sm:flex sm:justify-between">
-                                                <div class="sm:flex">
-                                                    <p class="flex items-center text-sm text-gray-500">
-                                                        <svg xmlns="http://www.w3.org/2000/svg" class="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
-                                                        </svg>
-                                                        <?php echo htmlspecialchars($activity['location']); ?>
-                                                    </p>
-                                                </div>
-                                                <?php
-                                                    $applicationCount = $conn->query("SELECT COUNT(*) as count FROM applications WHERE activity_id = " . $activity['id']);
-                                                    $appCount = $applicationCount->fetch_assoc();
-                                                    $status = "Active";
-                                                    $status_color = "green";
-                                                    
-                                                    if(strtotime($activity['event_date']) < time()) {
-                                                        $status = "Past";
-                                                        $status_color = "gray";
-                                                    } elseif(strtotime($activity['application_deadline']) < time()) {
-                                                        $status = "Closed";
-                                                        $status_color = "yellow";
-                                                    }
-                                                ?>
-                                                <div class="mt-2 flex items-center text-sm text-gray-500 sm:mt-0">
-                                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-<?php echo $status_color; ?>-100 text-<?php echo $status_color; ?>-800 mr-2">
-                                                        <?php echo $status; ?>
-                                                    </span>
-                                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                                        <?php echo $appCount['count']; ?> Applicants
-                                                    </span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </a>
-                                </li>
-                            <?php endwhile; ?>
-                        <?php else: ?>
-                            <li class="px-4 py-5 sm:px-6">
-                                <p class="text-gray-500 text-center">You haven't created any volunteer activities yet.</p>
-                                <div class="mt-4 flex justify-center">
-                                    <a href="create_activity.php" class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">
-                                        Create Your First Activity
+            </div>
+        </div>
+    </div>
+    
+    <!-- Recent Activities & Applications -->
+    <div class="grid grid-cols-1 gap-5 sm:grid-cols-2">
+        <!-- Recent Activities -->
+        <div class="bg-white shadow sm:rounded-lg">
+            <div class="px-4 py-5 sm:px-6 flex justify-between items-center">
+                <h2 class="text-lg leading-6 font-medium text-gray-900">Kegiatan Terbaru</h2>
+                <a href="manage_activities.php" class="text-sm text-indigo-600 hover:text-indigo-500">
+                    Lihat Semua
+                </a>
+            </div>
+            <div class="border-t border-gray-200 px-4 py-5 sm:px-6">
+                <?php if($latest_activities && $latest_activities->num_rows > 0): ?>
+                <ul role="list" class="divide-y divide-gray-200">
+                    <?php while($activity = $latest_activities->fetch_assoc()): ?>
+                    <li class="py-3">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <a href="view_applications.php?activity_id=<?php echo $activity['id']; ?>" class="text-sm font-medium text-indigo-600 hover:text-indigo-900">
+                                    <?php echo htmlspecialchars($activity['title']); ?>
+                                </a>
+                                <div class="text-xs text-gray-500 mt-1">
+                                    <span class="mr-2"><?php echo date('d M Y', strtotime($activity['event_date'])); ?></span>
+                                    <span><?php echo htmlspecialchars($activity['location']); ?></span>
+                                </div>
+                            </div>
+                            <div class="text-xs text-gray-500">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-full bg-gray-100 text-gray-800">
+                                    <?php echo $activity['application_count']; ?> Pendaftar
+                                </span>
+                            </div>
+                        </div>
+                    </li>
+                    <?php endwhile; ?>
+                </ul>
+                <?php else: ?>
+                <div class="text-center py-4">
+                    <p class="text-sm text-gray-500">Belum ada kegiatan yang dibuat</p>
+                    <a href="create_activity.php" class="mt-3 inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700">
+                        <i class="fas fa-plus-circle mr-2"></i> Buat Kegiatan
+                    </a>
+                </div>
+                <?php endif; ?>
+            </div>
+        </div>
+        
+        <!-- Recent Applications -->
+        <div class="bg-white shadow sm:rounded-lg">
+            <div class="px-4 py-5 sm:px-6 flex justify-between items-center">
+                <h2 class="text-lg leading-6 font-medium text-gray-900">Pendaftaran Terbaru</h2>
+                <a href="manage_activities.php" class="text-sm text-indigo-600 hover:text-indigo-500">
+                    Kelola Pendaftar
+                </a>
+            </div>
+            <div class="border-t border-gray-200 px-4 py-5 sm:px-6">
+                <?php if($latest_applications && $latest_applications->num_rows > 0): ?>
+                <ul role="list" class="divide-y divide-gray-200">
+                    <?php while($application = $latest_applications->fetch_assoc()): 
+                        $status_class = '';
+                        $status_text = '';
+                        
+                        switch($application['status']) {
+                            case 'approved':
+                                $status_class = 'bg-green-100 text-green-800';
+                                $status_text = 'Diterima';
+                                break;
+                            case 'rejected':
+                                $status_class = 'bg-red-100 text-red-800';
+                                $status_text = 'Ditolak';
+                                break;
+                            default:
+                                $status_class = 'bg-yellow-100 text-yellow-800';
+                                $status_text = 'Menunggu';
+                        }
+                    ?>
+                    <li class="py-3">
+                        <div class="flex items-center justify-between">
+                            <div>
+                                <div class="text-sm font-medium text-gray-900">
+                                    <?php echo htmlspecialchars($application['user_name']); ?>
+                                </div>
+                                <div class="text-xs text-gray-500 mt-1">
+                                    <span>untuk</span>
+                                    <a href="view_applications.php?activity_id=<?php echo $application['activity_id']; ?>" class="text-indigo-600 hover:text-indigo-900">
+                                        <?php echo htmlspecialchars($application['title']); ?>
                                     </a>
                                 </div>
-                            </li>
-                        <?php endif; ?>
-                    </ul>
+                            </div>
+                            <div class="text-xs">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium <?php echo $status_class; ?>">
+                                    <?php echo $status_text; ?>
+                                </span>
+                                <div class="text-gray-400 mt-1 text-center">
+                                    <?php echo date('d/m/Y', strtotime($application['applied_at'])); ?>
+                                </div>
+                            </div>
+                        </div>
+                    </li>
+                    <?php endwhile; ?>
+                </ul>
+                <?php else: ?>
+                <div class="text-center py-4">
+                    <p class="text-sm text-gray-500">Belum ada pendaftaran</p>
                 </div>
+                <?php endif; ?>
             </div>
-
-            <!-- Recent Applications -->
-            <div class="mt-8 px-4 py-6 sm:px-0">
-                <h3 class="text-lg font-semibold text-gray-900">Recent Applications</h3>
-                <div class="mt-4 bg-white shadow overflow-hidden sm:rounded-md">
-                    <ul role="list" class="divide-y divide-gray-200">
-                        <?php if($applications && $applications->num_rows > 0): ?>
-                            <?php while($app = $applications->fetch_assoc()): ?>
-                                <li>
-                                    <a href="view_application.php?id=<?php echo $app['id']; ?>" class="block hover:bg-gray-50">
-                                        <div class="px-4 py-4 sm:px-6">
-                                            <div class="flex items-center justify-between">
-                                                <div class="text-sm font-medium text-indigo-600 truncate">
-                                                    <?php echo htmlspecialchars($app['user_name']); ?> - <?php echo htmlspecialchars($app['activity_title']); ?>
-                                                </div>
-                                                <div class="ml-2 flex-shrink-0 flex">
-                                                    <?php
-                                                        $status_color = 'gray';
-                                                        if($app['status'] == 'approved') $status_color = 'green';
-                                                        elseif($app['status'] == 'rejected') $status_color = 'red';
-                                                        elseif($app['status'] == 'pending') $status_color = 'yellow';
-                                                    ?>
-                                                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-<?php echo $status_color; ?>-100 text-<?php echo $status_color; ?>-800">
-                                                        <?php echo ucfirst($app['status']); ?>
-                                                    </span>
-                                                </div>
-                                            </div>
-                                            <div class="mt-2 flex justify-between">
-                                                <div class="flex items-center text-sm text-gray-500">
-                                                    <svg xmlns="http://www.w3.org/2000/svg" class="flex-shrink-0 mr-1.5 h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor">
-                                                        <path fill-rule="evenodd" d="M6 2a1 1 0 00-1 1v1H4a2 2 0 00-2 2v10a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-1V3a1 1 0 10-2 0v1H7V3a1 1 0 00-1-1zm0 5a1 1 0 000 2h8a1 1 0 100-2H6z" clip-rule="evenodd" />
-                                                    </svg>
-                                                    Applied on <?php echo date('M d, Y', strtotime($app['applied_at'])); ?>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    </a>
-                                </li>
-                            <?php endwhile; ?>
-                        <?php else: ?>
-                            <li class="px-4 py-5 sm:px-6">
-                                <p class="text-gray-500 text-center">No applications received yet.</p>
-                            </li>
-                        <?php endif; ?>
-                    </ul>
-                </div>
-            </div>
-        </main>
+        </div>
     </div>
-</body>
-</html>
+</main>
+
+<?php include_once '../../includes/footer.php'; ?>

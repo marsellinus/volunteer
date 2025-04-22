@@ -1,5 +1,6 @@
 <?php
 require_once '../../config/database.php';
+include_once '../../includes/notifications.php'; // Add this line
 session_start();
 
 // Check if user is logged in
@@ -9,6 +10,15 @@ if(!isset($_SESSION['user_id'])) {
 }
 
 $user_id = $_SESSION['user_id'];
+$user_name = $_SESSION['user_name'];
+
+// Get unread notifications count - with error handling
+try {
+    $unread_count = getUserUnreadNotificationsCount($user_id, $conn);
+} catch (Exception $e) {
+    $unread_count = 0;
+}
+
 $application_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 
 if($application_id <= 0) {

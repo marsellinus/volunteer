@@ -12,6 +12,13 @@ if(!isset($_SESSION['user_id'])) {
 $user_id = $_SESSION['user_id'];
 $user_name = $_SESSION['user_name'];
 
+// Get unread notifications count with error handling
+try {
+    $unread_count = getUserUnreadNotificationsCount($user_id, $conn);
+} catch (Exception $e) {
+    $unread_count = 0;
+}
+
 // Get application ID from URL parameter
 $application_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
 
@@ -22,9 +29,10 @@ if($application_id <= 0) {
 
 // Get application details with activity and owner info
 $stmt = $conn->prepare("
-    SELECT a.*, va.*, o.name as owner_name, o.organization_name, o.email as owner_email, o.website 
+    SELECT a.*, va.title, va.description, va.location, va.event_date, va.category,
+           o.name as organization_name, o.organization_description, o.website
     FROM applications a 
-    JOIN volunteer_activities va ON a.activity_id = va.id 
+    JOIN volunteer_activities va ON a.activity_id = va.id
     JOIN owners o ON va.owner_id = o.owner_id
     WHERE a.id = ? AND a.user_id = ?
 ");
@@ -39,208 +47,147 @@ if($result->num_rows === 0) {
 
 $application = $result->fetch_assoc();
 
-// Translate application status
-$status_text = 'Pending Review';
-$status_class = 'yellow';
+// Define status variables with default values
+$status_color = 'gray';
 $status_icon = 'clock';
+$status_text = 'Menunggu';
 
-if($application['status'] === 'approved') {
-    $status_text = 'Diterima';
-    $status_class = 'green';
-    $status_icon = 'check-circle';
-} elseif($application['status'] === 'rejected') {
-    $status_text = 'Ditolak';
-    $status_class = 'red';
-    $status_icon = 'times-circle';
-} elseif($application['status'] === 'pending') {
-    $status_text = 'Menunggu';
-    $status_class = 'yellow';
-    $status_icon = 'clock';
+// Set appropriate values based on application status
+if (isset($application['status'])) {
+    if ($application['status'] === 'approved') {
+        $status_color = 'green';
+        $status_icon = 'check-circle';
+        $status_text = 'Diterima';
+    } elseif ($application['status'] === 'rejected') {
+        $status_color = 'red';
+        $status_icon = 'times-circle';
+        $status_text = 'Ditolak';
+    } elseif ($application['status'] === 'pending') {
+        $status_color = 'yellow';
+        $status_icon = 'clock';
+        $status_text = 'Menunggu';
+    }
 }
 
 // Check if event has passed (for certificate eligibility)
 $event_passed = strtotime($application['event_date']) < time();
 $can_get_certificate = $event_passed && $application['status'] === 'approved';
+
+$page_title = 'Detail Pendaftaran - VolunteerHub';
+include '../../includes/header_user.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Detail Pendaftaran - VolunteerHub</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
-</head>
-<body class="bg-gray-50">
-    <div class="min-h-screen">
-        <!-- Navigation -->
-        <nav class="bg-indigo-600 shadow-lg">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="flex justify-between h-16">
-                    <div class="flex">
-                        <div class="flex-shrink-0 flex items-center">
-                            <h1 class="text-xl font-bold text-white">VolunteerHub</h1>
-                        </div>
-                        <div class="ml-6 flex items-center space-x-4">
-                            <a href="search.php" class="text-white hover:text-indigo-100 px-3 py-2 rounded-md text-sm font-medium">
-                                <i class="fas fa-search mr-1"></i> Cari
-                            </a>
-                            <a href="my_applications.php" class="text-white hover:text-indigo-100 px-3 py-2 rounded-md text-sm font-medium bg-indigo-700">
-                                <i class="fas fa-clipboard-list mr-1"></i> Lamaran
-                            </a>
-                            <a href="certificates.php" class="text-white hover:text-indigo-100 px-3 py-2 rounded-md text-sm font-medium">
-                                <i class="fas fa-certificate mr-1"></i> Piagam
-                            </a>
-                            <a href="profile.php" class="text-white hover:text-indigo-100 px-3 py-2 rounded-md text-sm font-medium">
-                                <i class="fas fa-user mr-1"></i> Profil
-                            </a>
-                        </div>
-                    </div>
-                    <div class="flex items-center">
-                        <span class="text-white mr-4">Hello, <?php echo htmlspecialchars($user_name); ?></span>
-                        <a href="../../auth/logout.php" class="bg-indigo-700 hover:bg-indigo-800 text-white px-3 py-2 rounded-md text-sm font-medium transition-colors duration-300">
-                            <i class="fas fa-sign-out-alt mr-1"></i> Logout
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </nav>
 
-        <!-- Main Content -->
-        <main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-            <div class="mb-6">
-                <a href="my_applications.php" class="inline-flex items-center text-sm text-indigo-600 hover:text-indigo-500">
-                    <i class="fas fa-arrow-left mr-1"></i> Kembali ke daftar pendaftaran
-                </a>
-            </div>
-
-            <!-- Application Status Banner -->
-            <div class="bg-<?php echo $status_class; ?>-50 border border-<?php echo $status_class; ?>-200 rounded-lg p-4 mb-6">
-                <div class="flex">
-                    <div class="flex-shrink-0">
-                        <i class="fas fa-<?php echo $status_icon; ?> text-<?php echo $status_class; ?>-400 text-xl"></i>
-                    </div>
-                    <div class="ml-3">
-                        <h3 class="text-lg font-medium text-<?php echo $status_class; ?>-800">
-                            Status Pendaftaran: <?php echo $status_text; ?>
-                        </h3>
-                        <div class="mt-2 text-sm text-<?php echo $status_class; ?>-700">
-                            <?php if($application['status'] === 'pending'): ?>
-                                <p>Pendaftaran Anda sedang ditinjau oleh panitia. Kami akan memberi tahu Anda jika ada pembaruan.</p>
-                            <?php elseif($application['status'] === 'approved'): ?>
-                                <p>Selamat! Anda telah diterima untuk kegiatan volunteer ini. Panitia akan menghubungi Anda dengan detail lebih lanjut melalui email.</p>
-                            <?php elseif($application['status'] === 'rejected'): ?>
-                                <p>Maaf, pendaftaran Anda tidak terpilih untuk kesempatan ini. Jangan menyerah dan terus mencari kesempatan volunteer lainnya yang sesuai dengan minat Anda.</p>
-                            <?php endif; ?>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="bg-white shadow overflow-hidden sm:rounded-lg mb-6">
-                <div class="px-4 py-5 sm:px-6 bg-gradient-to-r from-indigo-600 to-purple-700 text-white">
-                    <h3 class="text-lg leading-6 font-medium">Detail Kegiatan Volunteer</h3>
-                    <p class="mt-1 max-w-2xl text-sm text-indigo-100">Informasi tentang kegiatan yang Anda daftar</p>
-                </div>
-                <div class="border-t border-gray-200">
-                    <dl>
-                        <div class="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                            <dt class="text-sm font-medium text-gray-500">Judul Kegiatan</dt>
-                            <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2"><?php echo htmlspecialchars($application['title']); ?></dd>
-                        </div>
-                        <div class="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                            <dt class="text-sm font-medium text-gray-500">Penyelenggara</dt>
-                            <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                                <?php echo htmlspecialchars($application['organization_name']); ?> - <?php echo htmlspecialchars($application['owner_name']); ?>
-                                <?php if(!empty($application['website'])): ?>
-                                    <div class="mt-1">
-                                        <a href="<?php echo htmlspecialchars($application['website']); ?>" target="_blank" class="text-indigo-600 hover:text-indigo-500">
-                                            <i class="fas fa-external-link-alt mr-1"></i> Website
-                                        </a>
-                                    </div>
-                                <?php endif; ?>
-                            </dd>
-                        </div>
-                        <div class="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                            <dt class="text-sm font-medium text-gray-500">Lokasi</dt>
-                            <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                                <div class="flex items-center">
-                                    <i class="fas fa-map-marker-alt text-red-500 mr-2"></i>
-                                    <?php echo htmlspecialchars($application['location']); ?>
-                                </div>
-                            </dd>
-                        </div>
-                        <div class="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                            <dt class="text-sm font-medium text-gray-500">Tanggal Kegiatan</dt>
-                            <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                                <?php echo date('d F Y', strtotime($application['event_date'])); ?>
-                                <?php 
-                                if($event_passed) {
-                                    echo '<span class="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">Kegiatan telah selesai</span>';
-                                } else {
-                                    $days_left = ceil((strtotime($application['event_date']) - time()) / (60 * 60 * 24));
-                                    echo '<span class="ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">' . $days_left . ' hari lagi</span>';
-                                }
-                                ?>
-                            </dd>
-                        </div>
-                        <div class="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                            <dt class="text-sm font-medium text-gray-500">Kategori</dt>
-                            <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2"><?php echo htmlspecialchars($application['category']); ?></dd>
-                        </div>
-                        <div class="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                            <dt class="text-sm font-medium text-gray-500">Deskripsi Kegiatan</dt>
-                            <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                                <div class="prose prose-sm max-w-none">
-                                    <?php echo nl2br(htmlspecialchars($application['description'])); ?>
-                                </div>
-                            </dd>
-                        </div>
-                    </dl>
-                </div>
-            </div>
-
-            <div class="bg-white shadow overflow-hidden sm:rounded-lg mb-6">
-                <div class="px-4 py-5 sm:px-6">
-                    <h3 class="text-lg leading-6 font-medium text-gray-900">Detail Pendaftaran Anda</h3>
-                    <p class="mt-1 max-w-2xl text-sm text-gray-500">Informasi yang Anda berikan saat mendaftar</p>
-                </div>
-                <div class="border-t border-gray-200">
-                    <dl>
-                        <div class="bg-gray-50 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                            <dt class="text-sm font-medium text-gray-500">Tanggal Pendaftaran</dt>
-                            <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                                <?php echo date('d F Y H:i', strtotime($application['applied_at'])); ?>
-                            </dd>
-                        </div>
-                        <div class="bg-white px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                            <dt class="text-sm font-medium text-gray-500">Pesan Anda</dt>
-                            <dd class="mt-1 text-sm text-gray-900 sm:mt-0 sm:col-span-2">
-                                <div class="prose prose-sm max-w-none">
-                                    <?php echo nl2br(htmlspecialchars($application['message'])); ?>
-                                </div>
-                            </dd>
-                        </div>
-                    </dl>
-                </div>
-            </div>
-
-            <?php if($can_get_certificate): ?>
-            <div class="mt-6 flex justify-center">
-                <a href="certificates.php?generate=1&id=<?php echo $application_id; ?>" class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                    <i class="fas fa-certificate mr-2"></i> Download Piagam Partisipasi
-                </a>
-            </div>
-            <?php endif; ?>
-
-            <?php if($application['status'] === 'pending'): ?>
-            <div class="mt-6 flex justify-end">
-                <a href="cancel_application.php?id=<?php echo $application_id; ?>" class="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500" onclick="return confirm('Apakah Anda yakin ingin membatalkan pendaftaran ini?')">
-                    <i class="fas fa-times-circle mr-2"></i> Batalkan Pendaftaran
-                </a>
-            </div>
-            <?php endif; ?>
-        </main>
+<!-- Main Content -->
+<main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+    <div class="mb-6">
+        <a href="my_applications.php" class="inline-flex items-center text-sm text-indigo-600 hover:text-indigo-500">
+            <i class="fas fa-arrow-left mr-1"></i> Kembali ke daftar lamaran
+        </a>
     </div>
-</body>
-</html>
+
+    <!-- Application Details Card -->
+    <div class="bg-white shadow-lg rounded-xl overflow-hidden mb-6">
+        <!-- Header with status -->
+        <div class="bg-gradient-to-r from-indigo-700 to-purple-700 px-6 py-4 text-white">
+            <div class="flex justify-between items-center">
+                <h2 class="text-xl font-bold">Detail Pendaftaran Volunteer</h2>
+                <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-white text-<?php echo $status_color; ?>-700">
+                    <i class="fas fa-<?php echo $status_icon; ?> mr-1"></i> <?php echo $status_text; ?>
+                </span>
+            </div>
+        </div>
+
+        <!-- Activity Details -->
+        <div class="px-6 py-4 border-b border-gray-200">
+            <div class="flex items-start">
+                <div class="flex-shrink-0 w-12 h-12 rounded-lg bg-indigo-100 flex items-center justify-center text-indigo-600">
+                    <i class="fas fa-hands-helping"></i>
+                </div>
+                <div class="ml-4">
+                    <h3 class="text-lg font-medium text-gray-900"><?php echo htmlspecialchars($application['title']); ?></h3>
+                    <div class="mt-1 flex flex-col sm:flex-row sm:flex-wrap sm:space-x-6">
+                        <div class="mt-2 flex items-center text-sm text-gray-500">
+                            <i class="fas fa-map-marker-alt mr-1.5 text-gray-400"></i>
+                            <?php echo htmlspecialchars($application['location']); ?>
+                        </div>
+                        <div class="mt-2 flex items-center text-sm text-gray-500">
+                            <i class="far fa-calendar-alt mr-1.5 text-gray-400"></i>
+                            <?php echo date('d M Y', strtotime($application['event_date'])); ?>
+                        </div>
+                        <div class="mt-2 flex items-center text-sm text-gray-500">
+                            <i class="fas fa-user-tie mr-1.5 text-gray-400"></i>
+                            <?php echo htmlspecialchars($application['organization_name']); ?>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Application Details -->
+        <div class="px-6 py-4">
+            <div class="mb-6">
+                <h4 class="text-md font-medium text-gray-700 mb-2 flex items-center">
+                    <i class="fas fa-paper-plane mr-2 text-indigo-500"></i>
+                    Informasi Pendaftaran
+                </h4>
+                <div class="bg-gray-50 rounded-lg p-4">
+                    <p class="text-sm text-gray-500">
+                        <span class="font-medium">Didaftarkan pada:</span> <?php echo date('d M Y, H:i', strtotime($application['applied_at'])); ?>
+                    </p>
+                    <div class="mt-3">
+                        <p class="text-sm font-medium text-gray-500">Pesan Pendaftaran:</p>
+                        <div class="mt-1 whitespace-pre-line text-sm text-gray-700 bg-white p-3 border border-gray-200 rounded-md">
+                            <?php echo nl2br(htmlspecialchars($application['message'])); ?>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Status Details -->
+            <div class="mb-6">
+                <h4 class="text-md font-medium text-gray-700 mb-2 flex items-center">
+                    <i class="fas fa-info-circle mr-2 text-indigo-500"></i>
+                    Status Pendaftaran
+                </h4>
+                <div class="bg-<?php echo $status_color; ?>-50 rounded-lg p-4 border-l-4 border-<?php echo $status_color; ?>-500">
+                    <div class="flex items-start">
+                        <div class="flex-shrink-0">
+                            <i class="fas fa-<?php echo $status_icon; ?> text-<?php echo $status_color; ?>-600"></i>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm font-medium text-<?php echo $status_color; ?>-800">
+                                <?php echo $status_text; ?>
+                            </p>
+                            <div class="mt-1 text-sm text-<?php echo $status_color; ?>-700">
+                                <?php if($application['status'] === 'pending'): ?>
+                                    Pendaftaran Anda sedang dalam proses review oleh penyelenggara.
+                                <?php elseif($application['status'] === 'approved'): ?>
+                                    Selamat! Anda telah diterima untuk berpartisipasi dalam kegiatan ini.
+                                <?php elseif($application['status'] === 'rejected'): ?>
+                                    Maaf, pendaftaran Anda tidak dapat diterima untuk kegiatan ini.
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <?php if($application['status'] === 'approved'): ?>
+                <div class="mt-6 flex flex-col sm:flex-row sm:justify-between items-center border-t border-gray-200 pt-6">
+                    <p class="text-sm text-gray-500">
+                        Apabila Anda tidak dapat mengikuti kegiatan ini, mohon hubungi penyelenggara.
+                    </p>
+                    
+                    <?php if($can_get_certificate): ?>
+                    <a href="generate_certificate.php?id=<?php echo $application_id; ?>" class="mt-3 sm:mt-0 inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 transition duration-150">
+                        <i class="fas fa-certificate mr-2"></i> Download Piagam Partisipasi
+                    </a>
+                    <?php endif; ?>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+</main>
+
+<?php include '../../includes/footer.php'; ?>

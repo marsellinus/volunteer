@@ -1,5 +1,6 @@
 <?php
 include_once '../../config/database.php';
+include_once '../../includes/notifications.php';
 session_start();
 
 // Check if user is logged in
@@ -10,6 +11,13 @@ if(!isset($_SESSION['user_id'])) {
 
 $user_id = $_SESSION['user_id'];
 $user_name = $_SESSION['user_name'];
+
+// Get unread notifications count with error handling
+try {
+    $unread_count = getUserUnreadNotificationsCount($user_id, $conn);
+} catch (Exception $e) {
+    $unread_count = 0;
+}
 
 // Get user profile data
 $stmt = $conn->prepare("SELECT * FROM users WHERE user_id = ?");
@@ -85,7 +93,8 @@ $stats = [
     'approved_applications' => 0,
     'pending_applications' => 0,
     'upcoming_activities' => 0,
-    'completed_activities' => 0
+    'completed_activities' => 0,
+    'certificates' => 0
 ];
 
 $stats_query = $conn->query("
@@ -128,185 +137,188 @@ $completed_query = $conn->query("
 if($completed_result = $completed_query->fetch_assoc()) {
     $stats['completed_activities'] = $completed_result['completed_count'];
 }
+
+$certificates_query = $conn->query("
+    SELECT COUNT(*) as certificates_count
+    FROM certificates
+    WHERE user_id = $user_id
+");
+
+if($certificates_result = $certificates_query->fetch_assoc()) {
+    $stats['certificates'] = $certificates_result['certificates_count'];
+}
+
+$page_title = 'Profil Saya - VolunteerHub';
+include '../../includes/header_user.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Profil - VolunteerHub</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css">
-</head>
-<body class="bg-gray-50">
-    <div class="min-h-screen">
-        <!-- Navigation -->
-        <nav class="bg-indigo-600 shadow-lg">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="flex justify-between h-16">
-                    <div class="flex">
-                        <div class="flex-shrink-0 flex items-center">
-                            <h1 class="text-xl font-bold text-white">VolunteerHub</h1>
-                        </div>
-                        <div class="ml-6 flex items-center space-x-4">
-                            <a href="search.php" class="text-white hover:text-indigo-100 px-3 py-2 rounded-md text-sm font-medium">
-                                <i class="fas fa-search mr-1"></i> Cari
-                            </a>
-                            <a href="my_applications.php" class="text-white hover:text-indigo-100 px-3 py-2 rounded-md text-sm font-medium">
-                                <i class="fas fa-clipboard-list mr-1"></i> Lamaran
-                            </a>
-                            <a href="certificates.php" class="text-white hover:text-indigo-100 px-3 py-2 rounded-md text-sm font-medium">
-                                <i class="fas fa-certificate mr-1"></i> Piagam
-                            </a>
-                            <a href="profile.php" class="text-white hover:text-indigo-100 px-3 py-2 rounded-md text-sm font-medium bg-indigo-700">
-                                <i class="fas fa-user mr-1"></i> Profil
-                            </a>
-                        </div>
-                    </div>
-                    <div class="flex items-center">
-                        <span class="text-white mr-4">Hello, <?php echo htmlspecialchars($user_name); ?></span>
-                        <a href="../../auth/logout.php" class="bg-indigo-700 hover:bg-indigo-800 text-white px-3 py-2 rounded-md text-sm font-medium transition-colors duration-300">
-                            <i class="fas fa-sign-out-alt mr-1"></i> Logout
-                        </a>
-                    </div>
+
+<!-- Main Content -->
+<main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+    <div class="md:grid md:grid-cols-3 md:gap-6">
+        <!-- Profile Summary -->
+        <div class="md:col-span-1">
+            <div class="bg-white shadow overflow-hidden sm:rounded-lg mb-6">
+                <div class="px-4 py-5 sm:px-6 bg-gradient-to-r from-indigo-600 to-purple-700 text-white">
+                    <h3 class="text-lg font-medium">Profil Volunteer</h3>
+                    <p class="mt-1 text-sm text-indigo-100">Informasi personal Anda</p>
                 </div>
-            </div>
-        </nav>
-
-        <!-- Main Content -->
-        <main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
-            <div class="md:grid md:grid-cols-3 md:gap-6">
-                <!-- Profile Summary -->
-                <div class="md:col-span-1">
-                    <div class="bg-white shadow overflow-hidden sm:rounded-lg mb-6">
-                        <div class="px-4 py-5 sm:px-6 bg-gradient-to-r from-indigo-600 to-indigo-700 text-white">
-                            <h3 class="text-lg font-medium">Profil Volunteer</h3>
-                            <p class="mt-1 text-sm text-indigo-100">Detail informasi pribadi Anda</p>
+                <div class="border-t border-gray-200 px-4 py-5 sm:p-6">
+                    <div class="flex items-center mb-6">
+                        <div class="flex-shrink-0 h-24 w-24 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-500 text-3xl">
+                            <?php echo strtoupper(substr($user['name'] ?? $user_name, 0, 2)); ?>
                         </div>
-                        <div class="border-t border-gray-200 px-4 py-5 sm:p-6">
-                            <div class="flex items-center mb-4">
-                                <div class="flex-shrink-0 h-20 w-20 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-500 text-2xl">
-                                    <?php echo strtoupper(substr($user_name, 0, 2)); ?>
-                                </div>
-                                <div class="ml-4">
-                                    <h3 class="text-lg font-medium text-gray-900"><?php echo htmlspecialchars($user_name); ?></h3>
-                                    <p class="text-sm text-gray-500"><?php echo htmlspecialchars($user['email']); ?></p>
-                                    <p class="text-sm text-gray-500">Bergabung: <?php echo date('d M Y', strtotime($user['created_at'])); ?></p>
-                                </div>
-                            </div>
-
-                            <div class="mt-6">
-                                <h4 class="text-sm font-medium text-gray-500 uppercase tracking-wider mb-2">Statistik Volunteer</h4>
-                                <dl class="grid grid-cols-2 gap-x-4 gap-y-6">
-                                    <div class="border-l-4 border-indigo-400 pl-2">
-                                        <dt class="text-sm text-gray-500">Total Pendaftaran</dt>
-                                        <dd class="mt-1 text-2xl font-semibold text-gray-900"><?php echo $stats['total_applications']; ?></dd>
-                                    </div>
-                                    <div class="border-l-4 border-green-400 pl-2">
-                                        <dt class="text-sm text-gray-500">Diterima</dt>
-                                        <dd class="mt-1 text-2xl font-semibold text-gray-900"><?php echo $stats['approved_applications']; ?></dd>
-                                    </div>
-                                    <div class="border-l-4 border-yellow-400 pl-2">
-                                        <dt class="text-sm text-gray-500">Menunggu</dt>
-                                        <dd class="mt-1 text-2xl font-semibold text-gray-900"><?php echo $stats['pending_applications']; ?></dd>
-                                    </div>
-                                    <div class="border-l-4 border-purple-400 pl-2">
-                                        <dt class="text-sm text-gray-500">Kegiatan Selesai</dt>
-                                        <dd class="mt-1 text-2xl font-semibold text-gray-900"><?php echo $stats['completed_activities']; ?></dd>
-                                    </div>
-                                </dl>
-                            </div>
+                        <div class="ml-4">
+                            <h3 class="text-xl font-medium text-gray-900"><?php echo htmlspecialchars($user['name'] ?? 'User'); ?></h3>
+                            <p class="text-sm text-gray-500"><?php echo htmlspecialchars($user['email']); ?></p>
                         </div>
                     </div>
-                </div>
 
-                <!-- Profile Form -->
-                <div class="md:col-span-2">
-                    <form action="profile.php" method="POST" class="bg-white shadow overflow-hidden sm:rounded-lg">
-                        <div class="px-4 py-5 sm:px-6 bg-gray-50">
-                            <h3 class="text-lg leading-6 font-medium text-gray-900">Edit Profil</h3>
-                            <p class="mt-1 max-w-2xl text-sm text-gray-500">Perbarui informasi profil Anda</p>
+                    <dl class="divide-y divide-gray-200">
+                        <?php if(!empty($user['bio'])): ?>
+                        <div class="py-4">
+                            <dt class="text-sm font-medium text-gray-500">Bio</dt>
+                            <dd class="mt-1 text-sm text-gray-900 whitespace-pre-line"><?php echo htmlspecialchars($user['bio']); ?></dd>
                         </div>
-
-                        <?php if($success): ?>
-                            <div class="bg-green-50 border-l-4 border-green-400 p-4 mx-4 mt-4">
-                                <div class="flex">
-                                    <div class="flex-shrink-0">
-                                        <i class="fas fa-check-circle text-green-400"></i>
-                                    </div>
-                                    <div class="ml-3">
-                                        <p class="text-sm text-green-700">
-                                            <?php echo $success; ?>
-                                        </p>
-                                    </div>
+                        <?php endif; ?>
+                        
+                        <?php if(!empty($user['skills'])): ?>
+                        <div class="py-4">
+                            <dt class="text-sm font-medium text-gray-500 mb-2">Keterampilan</dt>
+                            <dd class="mt-1">
+                                <div class="flex flex-wrap gap-2">
+                                    <?php foreach(explode(',', $user['skills']) as $skill): ?>
+                                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-indigo-100 text-indigo-800">
+                                            <?php echo htmlspecialchars(trim($skill)); ?>
+                                        </span>
+                                    <?php endforeach; ?>
                                 </div>
-                            </div>
+                            </dd>
+                        </div>
                         <?php endif; ?>
 
-                        <?php if($error): ?>
-                            <div class="bg-red-50 border-l-4 border-red-400 p-4 mx-4 mt-4">
-                                <div class="flex">
-                                    <div class="flex-shrink-0">
-                                        <i class="fas fa-exclamation-circle text-red-400"></i>
-                                    </div>
-                                    <div class="ml-3">
-                                        <p class="text-sm text-red-700">
-                                            <?php echo $error; ?>
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        <?php endif; ?>
-
-                        <div class="border-t border-gray-200 px-4 py-5 sm:p-6">
-                            <div class="grid grid-cols-6 gap-6">
-                                <div class="col-span-6 sm:col-span-4">
-                                    <label for="name" class="block text-sm font-medium text-gray-700">Nama Lengkap</label>
-                                    <input type="text" name="name" id="name" value="<?php echo htmlspecialchars($user['name']); ?>" required class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
-                                </div>
-
-                                <div class="col-span-6">
-                                    <label for="bio" class="block text-sm font-medium text-gray-700">Bio</label>
-                                    <textarea id="bio" name="bio" rows="3" class="mt-1 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"><?php echo htmlspecialchars($user['bio'] ?? ''); ?></textarea>
-                                    <p class="mt-2 text-sm text-gray-500">Tuliskan tentang diri Anda secara singkat.</p>
-                                </div>
-
-                                <div class="col-span-6">
-                                    <label for="skills" class="block text-sm font-medium text-gray-700">Keterampilan</label>
-                                    <input type="text" name="skills" id="skills" value="<?php echo htmlspecialchars($user['skills'] ?? ''); ?>" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
-                                    <p class="mt-2 text-sm text-gray-500">Masukkan keterampilan yang Anda miliki, dipisahkan dengan koma (misal: Public Speaking, Desain Grafis, Mengajar).</p>
-                                </div>
-
-                                <div class="col-span-6 border-t border-gray-200 pt-6">
-                                    <h3 class="text-lg font-medium text-gray-900">Ubah Password</h3>
-                                    <p class="mt-1 text-sm text-gray-500">Kosongkan jika Anda tidak ingin mengubah password.</p>
-                                </div>
-
-                                <div class="col-span-6 sm:col-span-4">
-                                    <label for="current_password" class="block text-sm font-medium text-gray-700">Password Saat Ini</label>
-                                    <input type="password" name="current_password" id="current_password" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
-                                </div>
-
-                                <div class="col-span-6 sm:col-span-4">
-                                    <label for="new_password" class="block text-sm font-medium text-gray-700">Password Baru</label>
-                                    <input type="password" name="new_password" id="new_password" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
-                                </div>
-
-                                <div class="col-span-6 sm:col-span-4">
-                                    <label for="confirm_password" class="block text-sm font-medium text-gray-700">Konfirmasi Password Baru</label>
-                                    <input type="password" name="confirm_password" id="confirm_password" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
-                                </div>
-                            </div>
+                        <div class="py-4">
+                            <dt class="text-sm font-medium text-gray-500">Bergabung sejak</dt>
+                            <dd class="mt-1 text-sm text-gray-900"><?php echo date('d F Y', strtotime($user['created_at'])); ?></dd>
                         </div>
-                        <div class="px-4 py-3 bg-gray-50 text-right sm:px-6">
-                            <button type="submit" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                                <i class="fas fa-save mr-2"></i> Simpan Perubahan
-                            </button>
-                        </div>
-                    </form>
+                    </dl>
                 </div>
             </div>
-        </main>
+
+            <!-- Volunteer Stats -->
+            <div class="bg-white shadow overflow-hidden sm:rounded-lg">
+                <div class="px-4 py-5 sm:px-6 bg-gradient-to-r from-indigo-600 to-purple-700 text-white">
+                    <h3 class="text-lg font-medium">Statistik Volunteer</h3>
+                    <p class="mt-1 text-sm text-indigo-100">Aktivitas volunteer Anda</p>
+                </div>
+                <div class="border-t border-gray-200 px-4 py-5 sm:p-6">
+                    <dl class="grid grid-cols-2 gap-x-4 gap-y-6">
+                        <div class="border-l-4 border-indigo-400 pl-2">
+                            <dt class="text-sm text-gray-500">Total Pendaftaran</dt>
+                            <dd class="mt-1 text-2xl font-semibold text-gray-900"><?php echo $stats['total_applications']; ?></dd>
+                        </div>
+                        <div class="border-l-4 border-green-400 pl-2">
+                            <dt class="text-sm text-gray-500">Diterima</dt>
+                            <dd class="mt-1 text-2xl font-semibold text-gray-900"><?php echo $stats['approved_applications']; ?></dd>
+                        </div>
+                        <div class="border-l-4 border-yellow-400 pl-2">
+                            <dt class="text-sm text-gray-500">Menunggu</dt>
+                            <dd class="mt-1 text-2xl font-semibold text-gray-900"><?php echo $stats['pending_applications']; ?></dd>
+                        </div>
+                        <div class="border-l-4 border-purple-400 pl-2">
+                            <dt class="text-sm text-gray-500">Piagam</dt>
+                            <dd class="mt-1 text-2xl font-semibold text-gray-900"><?php echo $stats['certificates']; ?></dd>
+                        </div>
+                    </dl>
+                </div>
+            </div>
+        </div>
+
+        <!-- Profile Form -->
+        <div class="mt-5 md:mt-0 md:col-span-2">
+            <form action="profile.php" method="POST" class="bg-white shadow overflow-hidden sm:rounded-lg">
+                <div class="px-4 py-5 sm:px-6 bg-gray-50">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900">Edit Profil</h3>
+                    <p class="mt-1 max-w-2xl text-sm text-gray-500">Perbarui informasi profil Anda</p>
+                </div>
+
+                <?php if($success): ?>
+                    <div class="bg-green-50 border-l-4 border-green-400 p-4 mx-4 mt-4">
+                        <div class="flex">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-check-circle text-green-400"></i>
+                            </div>
+                            <div class="ml-3">
+                                <p class="text-sm text-green-700">
+                                    <?php echo $success; ?>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                <?php endif; ?>
+
+                <?php if($error): ?>
+                    <div class="bg-red-50 border-l-4 border-red-400 p-4 mx-4 mt-4">
+                        <div class="flex">
+                            <div class="flex-shrink-0">
+                                <i class="fas fa-exclamation-circle text-red-400"></i>
+                            </div>
+                            <div class="ml-3">
+                                <p class="text-sm text-red-700">
+                                    <?php echo $error; ?>
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                <?php endif; ?>
+
+                <div class="border-t border-gray-200 px-4 py-5 sm:p-6">
+                    <div class="grid grid-cols-6 gap-6">
+                        <div class="col-span-6 sm:col-span-4">
+                            <label for="name" class="block text-sm font-medium text-gray-700">Nama Lengkap</label>
+                            <input type="text" name="name" id="name" value="<?php echo htmlspecialchars($user['name']); ?>" required class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
+                        </div>
+
+                        <div class="col-span-6">
+                            <label for="bio" class="block text-sm font-medium text-gray-700">Bio</label>
+                            <textarea id="bio" name="bio" rows="3" class="mt-1 shadow-sm focus:ring-indigo-500 focus:border-indigo-500 block w-full sm:text-sm border-gray-300 rounded-md"><?php echo htmlspecialchars($user['bio'] ?? ''); ?></textarea>
+                            <p class="mt-2 text-sm text-gray-500">Tuliskan tentang diri Anda secara singkat.</p>
+                        </div>
+
+                        <div class="col-span-6">
+                            <label for="skills" class="block text-sm font-medium text-gray-700">Keterampilan</label>
+                            <input type="text" name="skills" id="skills" value="<?php echo htmlspecialchars($user['skills'] ?? ''); ?>" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
+                            <p class="mt-2 text-sm text-gray-500">Masukkan keterampilan yang Anda miliki, dipisahkan dengan koma (misal: Public Speaking, Desain Grafis, Mengajar).</p>
+                        </div>
+
+                        <div class="col-span-6 border-t border-gray-200 pt-6">
+                            <h3 class="text-lg font-medium text-gray-900">Ubah Password</h3>
+                            <p class="mt-1 text-sm text-gray-500">Kosongkan jika Anda tidak ingin mengubah password.</p>
+                        </div>
+
+                        <div class="col-span-6 sm:col-span-4">
+                            <label for="current_password" class="block text-sm font-medium text-gray-700">Password Saat Ini</label>
+                            <input type="password" name="current_password" id="current_password" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
+                        </div>
+
+                        <div class="col-span-6 sm:col-span-4">
+                            <label for="new_password" class="block text-sm font-medium text-gray-700">Password Baru</label>
+                            <input type="password" name="new_password" id="new_password" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
+                        </div>
+
+                        <div class="col-span-6 sm:col-span-4">
+                            <label for="confirm_password" class="block text-sm font-medium text-gray-700">Konfirmasi Password Baru</label>
+                            <input type="password" name="confirm_password" id="confirm_password" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
+                        </div>
+                    </div>
+                </div>
+                <div class="px-4 py-3 bg-gray-50 text-right sm:px-6">
+                    <button type="submit" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                        <i class="fas fa-save mr-2"></i> Simpan Perubahan
+                    </button>
+                </div>
+            </form>
+        </div>
     </div>
-</body>
-</html>
+</main>
+
+<?php include '../../includes/footer.php'; ?>
