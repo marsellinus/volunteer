@@ -1,6 +1,6 @@
 <?php
 include_once '../../config/database.php';
-include_once '../../includes/notifications.php'; // Add this line
+include_once '../../includes/notifications.php';
 session_start();
 
 // Check if owner is logged in
@@ -12,90 +12,207 @@ if(!isset($_SESSION['owner_id'])) {
 $owner_id = $_SESSION['owner_id'];
 $owner_name = $_SESSION['owner_name'];
 
-// Get unread notifications count with error handling
-try {
-    $unread_count = getOwnerUnreadNotificationsCount($owner_id, $conn);
-} catch (Exception $e) {
-    $unread_count = 0;
+// Get activity ID from query parameter
+$activity_id = isset($_GET['id']) ? intval($_GET['id']) : 0;
+
+// Activity not found or invalid ID
+if($activity_id <= 0) {
+    header("Location: manage_activities.php");
+    exit;
 }
 
+// Check if activity belongs to the owner
+$stmt = $conn->prepare("SELECT * FROM volunteer_activities WHERE id = ? AND owner_id = ?");
+$stmt->bind_param("ii", $activity_id, $owner_id);
+$stmt->execute();
+$result = $stmt->get_result();
+
+// Activity not found or doesn't belong to this owner
+if($result->num_rows === 0) {
+    header("Location: manage_activities.php");
+    exit;
+}
+
+$activity = $result->fetch_assoc();
+
+// Handle form submission
+$success = '';
+$error = '';
+
+if($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['update_activity'])) {
+    // Get form data
+    $title = $_POST['title'] ?? '';
+    $description = $_POST['description'] ?? '';
+    $category = $_POST['category'] ?? '';
+    $location = $_POST['location'] ?? '';
+    $event_date = $_POST['event_date'] ?? '';
+    $application_deadline = $_POST['application_deadline'] ?? '';
+    $required_skills = $_POST['required_skills'] ?? '';
+    $is_featured = isset($_POST['is_featured']) ? 1 : 0;
+    
+    // Validate required fields
+    if(empty($title) || empty($description) || empty($category) || 
+       empty($location) || empty($event_date) || empty($application_deadline)) {
+        $error = "Semua field yang bertanda * harus diisi.";
+    } else {
+        // Update activity in database
+        $stmt = $conn->prepare("UPDATE volunteer_activities 
+                              SET title = ?, description = ?, category = ?, 
+                                  location = ?, event_date = ?, application_deadline = ?, 
+                                  required_skills = ?, is_featured = ?
+                              WHERE id = ? AND owner_id = ?");
+        
+        $stmt->bind_param("sssssssiis", 
+            $title, $description, $category, $location,
+            $event_date, $application_deadline, $required_skills, 
+            $is_featured, $activity_id, $owner_id);
+            
+        if($stmt->execute()) {
+            $success = "Kegiatan berhasil diperbarui!";
+            
+            // Refresh activity data
+            $stmt = $conn->prepare("SELECT * FROM volunteer_activities WHERE id = ?");
+            $stmt->bind_param("i", $activity_id);
+            $stmt->execute();
+            $result = $stmt->get_result();
+            $activity = $result->fetch_assoc();
+        } else {
+            $error = "Gagal memperbarui kegiatan. Silahkan coba lagi.";
+        }
+    }
+}
+
+$page_title = 'Edit Kegiatan - VolunteerHub';
+include '../../includes/header_owner.php';
 ?>
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Edit Activity</title>
-    <link rel="stylesheet" href="../../assets/css/styles.css">
-    <script src="https://kit.fontawesome.com/a076d05399.js" crossorigin="anonymous"></script>
-</head>
-<body class="bg-gray-50">
-    <div class="min-h-screen">
-        <!-- Navigation -->
-        <nav class="bg-indigo-600 shadow-lg">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="flex justify-between h-16">
-                    <div class="flex">
-                        <div class="flex-shrink-0 flex items-center">
-                            <h1 class="text-xl font-bold text-white">VolunteerHub</h1>
-                        </div>
-                        <div class="ml-6 flex items-center space-x-4">
-                            <a href="index.php" class="text-white hover:text-indigo-100 px-3 py-2 rounded-md text-sm font-medium">
-                                <i class="fas fa-home mr-1"></i> Dashboard
-                            </a>
-                            <a href="create_activity.php" class="text-white hover:text-indigo-100 px-3 py-2 rounded-md text-sm font-medium bg-indigo-700">
-                                <i class="fas fa-plus-circle mr-1"></i> Buat Kegiatan
-                            </a>
-                            <a href="manage_activities.php" class="text-white hover:text-indigo-100 px-3 py-2 rounded-md text-sm font-medium">
-                                <i class="fas fa-tasks mr-1"></i> Kelola Kegiatan
-                            </a>
-                            <a href="notifications.php" class="text-white hover:text-indigo-100 px-3 py-2 rounded-md text-sm font-medium relative">
-                                <i class="fas fa-bell mr-1"></i> Notifikasi
-                                <?php if($unread_count > 0): ?>
-                                <span class="absolute top-0 right-0 transform translate-x-1/2 -translate-y-1/2 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs">
-                                    <?php echo $unread_count; ?>
-                                </span>
-                                <?php endif; ?>
-                            </a>
-                            <a href="profile.php" class="text-white hover:text-indigo-100 px-3 py-2 rounded-md text-sm font-medium">
-                                <i class="fas fa-user mr-1"></i> Profil
-                            </a>
-                        </div>
+
+<!-- Main Content -->
+<main class="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+    <!-- Page Header -->
+    <div class="mb-6">
+        <div class="flex items-center justify-between">
+            <div class="flex items-center">
+                <a href="manage_activities.php" class="mr-4 text-indigo-600 hover:text-indigo-800">
+                    <i class="fas fa-arrow-left"></i>
+                </a>
+                <h1 class="text-2xl font-bold text-gray-900">Edit Kegiatan Volunteer</h1>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Success/Error Messages -->
+    <?php if($success): ?>
+    <div class="mb-4 bg-green-50 border-l-4 border-green-400 p-4">
+        <div class="flex">
+            <div class="flex-shrink-0">
+                <i class="fas fa-check-circle text-green-400"></i>
+            </div>
+            <div class="ml-3">
+                <p class="text-sm text-green-700"><?php echo $success; ?></p>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+    
+    <?php if($error): ?>
+    <div class="mb-4 bg-red-50 border-l-4 border-red-400 p-4">
+        <div class="flex">
+            <div class="flex-shrink-0">
+                <i class="fas fa-exclamation-circle text-red-400"></i>
+            </div>
+            <div class="ml-3">
+                <p class="text-sm text-red-700"><?php echo $error; ?></p>
+            </div>
+        </div>
+    </div>
+    <?php endif; ?>
+    
+    <!-- Edit Form -->
+    <div class="bg-white shadow overflow-hidden sm:rounded-md">
+        <form action="edit_activity.php?id=<?php echo $activity_id; ?>" method="post">
+            <div class="px-4 py-5 sm:p-6">
+                <div class="grid grid-cols-6 gap-6">
+                    <!-- Title -->
+                    <div class="col-span-6 sm:col-span-4">
+                        <label for="title" class="block text-sm font-medium text-gray-700">Judul Kegiatan *</label>
+                        <input type="text" name="title" id="title" value="<?php echo htmlspecialchars($activity['title']); ?>" required class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
                     </div>
-                    <div class="flex items-center">
-                        <span class="text-white mr-4">Hello, <?php echo htmlspecialchars($owner_name); ?></span>
-                        <a href="../../auth/logout.php" class="bg-indigo-700 hover:bg-indigo-800 text-white px-3 py-2 rounded-md text-sm font-medium transition-colors duration-300">
-                            <i class="fas fa-sign-out-alt mr-1"></i> Logout
-                        </a>
+                    
+                    <!-- Category -->
+                    <div class="col-span-6 sm:col-span-3">
+                        <label for="category" class="block text-sm font-medium text-gray-700">Kategori *</label>
+                        <select id="category" name="category" required class="mt-1 block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm">
+                            <option value="" disabled>Pilih kategori</option>
+                            <option value="Education" <?php echo ($activity['category'] == 'Education') ? 'selected' : ''; ?>>Education</option>
+                            <option value="Environment" <?php echo ($activity['category'] == 'Environment') ? 'selected' : ''; ?>>Environment</option>
+                            <option value="Health" <?php echo ($activity['category'] == 'Health') ? 'selected' : ''; ?>>Health</option>
+                            <option value="Community Service" <?php echo ($activity['category'] == 'Community Service') ? 'selected' : ''; ?>>Community Service</option>
+                            <option value="Animal Welfare" <?php echo ($activity['category'] == 'Animal Welfare') ? 'selected' : ''; ?>>Animal Welfare</option>
+                            <option value="Arts & Culture" <?php echo ($activity['category'] == 'Arts & Culture') ? 'selected' : ''; ?>>Arts & Culture</option>
+                            <option value="Disaster Relief" <?php echo ($activity['category'] == 'Disaster Relief') ? 'selected' : ''; ?>>Disaster Relief</option>
+                            <option value="Human Rights" <?php echo ($activity['category'] == 'Human Rights') ? 'selected' : ''; ?>>Human Rights</option>
+                            <option value="Sports" <?php echo ($activity['category'] == 'Sports') ? 'selected' : ''; ?>>Sports</option>
+                            <option value="Technology" <?php echo ($activity['category'] == 'Technology') ? 'selected' : ''; ?>>Technology</option>
+                        </select>
+                    </div>
+
+                    <!-- Location -->
+                    <div class="col-span-6 sm:col-span-3">
+                        <label for="location" class="block text-sm font-medium text-gray-700">Lokasi *</label>
+                        <input type="text" name="location" id="location" value="<?php echo htmlspecialchars($activity['location']); ?>" required class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
+                    </div>
+                    
+                    <!-- Event Date -->
+                    <div class="col-span-6 sm:col-span-3">
+                        <label for="event_date" class="block text-sm font-medium text-gray-700">Tanggal Kegiatan *</label>
+                        <input type="date" name="event_date" id="event_date" value="<?php echo $activity['event_date']; ?>" required class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
+                    </div>
+
+                    <!-- Application Deadline -->
+                    <div class="col-span-6 sm:col-span-3">
+                        <label for="application_deadline" class="block text-sm font-medium text-gray-700">Deadline Pendaftaran *</label>
+                        <input type="date" name="application_deadline" id="application_deadline" value="<?php echo $activity['application_deadline']; ?>" required class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
+                    </div>
+
+                    <!-- Description -->
+                    <div class="col-span-6">
+                        <label for="description" class="block text-sm font-medium text-gray-700">Deskripsi Kegiatan *</label>
+                        <textarea id="description" name="description" rows="6" required class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md"><?php echo htmlspecialchars($activity['description']); ?></textarea>
+                        <p class="mt-2 text-sm text-gray-500">Jelaskan detail tentang kegiatan, tujuan, manfaat, dan informasi penting lainnya.</p>
+                    </div>
+                    
+                    <!-- Required Skills -->
+                    <div class="col-span-6">
+                        <label for="required_skills" class="block text-sm font-medium text-gray-700">Keterampilan yang Diperlukan</label>
+                        <input type="text" name="required_skills" id="required_skills" value="<?php echo htmlspecialchars($activity['required_skills']); ?>" class="mt-1 focus:ring-indigo-500 focus:border-indigo-500 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md">
+                        <p class="mt-2 text-sm text-gray-500">Pisahkan dengan koma. Contoh: Komunikasi, Bahasa Inggris, Fotografi</p>
+                    </div>
+
+                    <!-- Featured Option -->
+                    <div class="col-span-6">
+                        <div class="flex items-start">
+                            <div class="flex items-center h-5">
+                                <input id="is_featured" name="is_featured" type="checkbox" <?php echo ($activity['is_featured'] == 1) ? 'checked' : ''; ?> class="focus:ring-indigo-500 h-4 w-4 text-indigo-600 border-gray-300 rounded">
+                            </div>
+                            <div class="ml-3 text-sm">
+                                <label for="is_featured" class="font-medium text-gray-700">Jadikan sebagai kegiatan unggulan</label>
+                                <p class="text-gray-500">Kegiatan unggulan akan ditampilkan di halaman utama dan direkomendasikan kepada volunteer.</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
-        </nav>
-
-        <!-- Main Content -->
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
-            <h2 class="text-2xl font-bold text-gray-800 mb-4">Edit Activity</h2>
-            <!-- Form for editing activity -->
-            <form action="update_activity.php" method="POST" class="bg-white shadow-md rounded px-8 pt-6 pb-8 mb-4">
-                <div class="mb-4">
-                    <label for="activity_name" class="block text-gray-700 text-sm font-bold mb-2">Activity Name:</label>
-                    <input type="text" id="activity_name" name="activity_name" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" required>
-                </div>
-                <div class="mb-4">
-                    <label for="activity_date" class="block text-gray-700 text-sm font-bold mb-2">Activity Date:</label>
-                    <input type="date" id="activity_date" name="activity_date" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" required>
-                </div>
-                <div class="mb-4">
-                    <label for="activity_description" class="block text-gray-700 text-sm font-bold mb-2">Description:</label>
-                    <textarea id="activity_description" name="activity_description" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" rows="4" required></textarea>
-                </div>
-                <div class="flex items-center justify-between">
-                    <button type="submit" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded focus:outline-none focus:shadow-outline">
-                        Update Activity
-                    </button>
-                </div>
-            </form>
-        </div>
+            
+            <div class="px-4 py-3 bg-gray-50 text-right sm:px-6">
+                <a href="manage_activities.php" class="inline-flex justify-center py-2 px-4 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 mr-3">
+                    Batal
+                </a>
+                <button type="submit" name="update_activity" class="inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                    Simpan Perubahan
+                </button>
+            </div>
+        </form>
     </div>
-</body>
-</html>
+</main>
+
+<?php include '../../includes/footer.php'; ?>
